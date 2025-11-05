@@ -1,0 +1,141 @@
+# This file contains the fastlane.tools configuration
+# You can find the documentation at https://docs.fastlane.tools
+#
+# For a list of all available actions, check out
+#
+#     https://docs.fastlane.tools/actions
+#
+# For a list of all available plugins, check out
+#
+#     https://docs.fastlane.tools/plugins/available-plugins
+#
+
+default_platform(:ios)
+
+platform :ios do
+  before_all do
+    ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "120"
+  end
+
+  desc "Run all tests"
+  lane :tests do
+    run_tests(
+      workspace: "Template App.xcworkspace",
+      scheme: "Template App",
+      devices: ["iPhone 14"],
+      code_coverage: true
+    )
+  end
+  
+  desc "Run SwiftLint"
+  lane :lint do
+    swiftlint(
+      mode: :lint,
+      output_file: "swiftlint.result.json",
+      reporter: "json",
+      config_file: ".swiftlint.yml",
+      ignore_exit_status: true
+    )
+  end
+
+  desc "Build app for testing"
+  lane :build do
+    build_app(
+      workspace: "Template App.xcworkspace",
+      scheme: "Template App",
+      skip_archive: true,
+      skip_codesigning: true
+    )
+  end
+
+  desc "Build and upload to TestFlight"
+  lane :beta do |options|
+    # Ensure the git status is clean
+    ensure_git_status_clean
+
+    # Increment build number
+    increment_build_number(
+      build_number: latest_testflight_build_number + 1,
+      xcodeproj: "Template App.xcodeproj"
+    )
+    
+    # Commit version bump
+    commit_version_bump(
+      message: "Bump build number [ci skip]",
+      xcodeproj: "Template App.xcodeproj"
+    )
+    
+    # Match for code signing
+    sync_code_signing(
+      type: "appstore",
+      app_identifier: "com.yourcompany.templateapp",
+      readonly: true
+    )
+    
+    # Build the app
+    build_app(
+      workspace: "Template App.xcworkspace",
+      scheme: "Template App",
+      include_bitcode: true,
+      include_symbols: true,
+      export_method: "app-store"
+    )
+    
+    # Upload to TestFlight
+    upload_to_testflight(
+      skip_waiting_for_build_processing: true,
+      beta_app_description: "This is a prerelease version.",
+      beta_app_feedback_email: "feedback@yourcompany.com",
+      changelog: options[:notes] || "New features and bug fixes.",
+      distribute_external: true,
+      groups: ["Developers", "Beta Testers"],
+      notify_external_testers: true
+    )
+    
+    # Push the changes
+    push_to_git_remote
+  end
+
+  desc "Create and upload app metadata and screenshots"
+  lane :metadata do
+    deliver(
+      skip_binary_upload: true,
+      skip_metadata: false,
+      skip_screenshots: false,
+      force: true
+    )
+  end
+
+  desc "Upload app to App Store"
+  lane :release do
+    # Ensure the git status is clean
+    ensure_git_status_clean
+    
+    # Match for code signing
+    sync_code_signing(
+      type: "appstore",
+      app_identifier: "com.yourcompany.templateapp",
+      readonly: true
+    )
+    
+    # Build the app
+    build_app(
+      workspace: "Template App.xcworkspace",
+      scheme: "Template App",
+      include_bitcode: true,
+      include_symbols: true,
+      export_method: "app-store"
+    )
+    
+    # Upload to App Store
+    deliver(
+      submit_for_review: true,
+      automatic_release: true,
+      force: true,
+      submission_information: {
+        export_compliance_uses_encryption: false,
+        add_id_info_uses_idfa: false
+      }
+    )
+  end
+end
