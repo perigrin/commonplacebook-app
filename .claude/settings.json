@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "includeCoAuthoredBy": false,
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash:git commit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if echo \"$TOOL_INPUT\" | grep -q '\"--no-verify\"'; then echo 'Error: --no-verify flag detected. Pre-commit hooks must not be skipped.' >&2 && exit 1; fi"
+          }
+        ]
+      }
+    ]
+  },
+  "enabledPlugins": {
+    "superpowers@superpowers-marketplace": true,
+    "episodic-memory@superpowers-marketplace": true
+  },
+  "alwaysThinkingEnabled": false,
+  "environmentVariables": {
+    "tailscale_auth_key": "@tailscale_auth_key"
+  },
+  "toolPreferences": {
+    "grep": "ag"
+  },
+  "feedbackSurveyState": {
+    "lastShownTime": 1754092602634
+  }
+}
