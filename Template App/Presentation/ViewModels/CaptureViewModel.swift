@@ -21,6 +21,7 @@ class CaptureViewModel: ObservableObject {
     private let audioMonitor: AudioLevelMonitor
     private let metadataCollector: MetadataCollector
     private let repository: NoteRepository
+    private let titleGenerator: TitleGenerator
     private var cancellables = Set<AnyCancellable>()
 
     // MARK: - Initialization
@@ -28,11 +29,13 @@ class CaptureViewModel: ObservableObject {
     init(speechService: SpeechRecognitionService? = nil,
          audioMonitor: AudioLevelMonitor? = nil,
          metadataCollector: MetadataCollector? = nil,
-         repository: NoteRepository) {
+         repository: NoteRepository,
+         titleGenerator: TitleGenerator? = nil) {
         self.speechService = speechService ?? SpeechRecognitionService()
         self.audioMonitor = audioMonitor ?? AudioLevelMonitor()
         self.metadataCollector = metadataCollector ?? MetadataCollector()
         self.repository = repository
+        self.titleGenerator = titleGenerator ?? TitleGenerator()
 
         setupBindings()
     }
@@ -201,22 +204,8 @@ class CaptureViewModel: ObservableObject {
     // MARK: - Private Helpers
 
     private func extractTitle(from content: String) -> String {
-        // Try to get first line as title
-        if let firstLine = content.components(separatedBy: .newlines).first,
-           !firstLine.isEmpty {
-            // Remove markdown heading markers
-            let cleaned = firstLine
-                .replacingOccurrences(of: "^#+\\s*", with: "", options: .regularExpression)
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-
-            if !cleaned.isEmpty {
-                return String(cleaned.prefix(100)) // Limit title length
-            }
-        }
-
-        // Fallback: use first 50 characters
-        let preview = content.prefix(50)
-        return String(preview)
+        // Use TitleGenerator for smart title extraction
+        return titleGenerator.generateTitle(from: content)
     }
 }
 

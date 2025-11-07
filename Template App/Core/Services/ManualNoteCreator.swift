@@ -11,6 +11,7 @@ class ManualNoteCreator {
 
     private let repository: NoteRepository
     private let metadataCollector: MetadataCollector
+    private let titleGenerator: TitleGenerator
 
     // MARK: - Static Properties
 
@@ -23,9 +24,10 @@ class ManualNoteCreator {
 
     // MARK: - Initialization
 
-    init(repository: NoteRepository, metadataCollector: MetadataCollector) {
+    init(repository: NoteRepository, metadataCollector: MetadataCollector, titleGenerator: TitleGenerator? = nil) {
         self.repository = repository
         self.metadataCollector = metadataCollector
+        self.titleGenerator = titleGenerator ?? TitleGenerator()
     }
 
     // MARK: - Note Creation
@@ -89,28 +91,10 @@ class ManualNoteCreator {
         return String(string[..<endIndex])
     }
 
-    /// Extract title from content (first line or timestamp)
+    /// Extract title from content using TitleGenerator
     private func extractTitleFromContent(_ content: String) -> String {
-        // Get first line
-        if let firstLine = content.components(separatedBy: .newlines).first,
-           !firstLine.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            // Remove markdown heading markers (with or without spaces)
-            let cleaned = firstLine
-                .replacingOccurrences(of: "^#+\\s?", with: "", options: .regularExpression)
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-
-            if !cleaned.isEmpty {
-                return unicodeSafeTruncate(cleaned, maxLength: 100)
-            }
-        }
-
-        // Fallback: timestamp-based title
-        return generateTimestampBasedTitle()
-    }
-
-    /// Generate fallback title based on timestamp
-    private func generateTimestampBasedTitle() -> String {
-        return "Note - \(Self.timestampFormatter.string(from: Date()))"
+        // Use TitleGenerator for smart title extraction
+        return titleGenerator.generateTitle(from: content)
     }
 }
 
