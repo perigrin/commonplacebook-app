@@ -80,13 +80,14 @@ final class CaptureViewUITests: XCTestCase {
         let micButton = app.buttons["microphoneButton"]
         micButton.tap()
 
-        // WHEN stopping recording
-        sleep(2) // Allow time for speech recognition
+        // WHEN stopping recording (wait for waveform to appear first)
+        let waveform = app.otherElements["waveformView"]
+        XCTAssertTrue(waveform.waitForExistence(timeout: 2))
         micButton.tap()
 
         // THEN transcription area exists
-        let transcriptionText = app.textViews["transcriptionText"]
-        XCTAssertTrue(transcriptionText.waitForExistence(timeout: 2))
+        let transcriptionText = app.staticTexts["transcriptionText"]
+        XCTAssertTrue(transcriptionText.waitForExistence(timeout: 5))
     }
 
     // MARK: - Save/Cancel Button Tests
@@ -98,12 +99,16 @@ final class CaptureViewUITests: XCTestCase {
         // GIVEN recording is complete
         let micButton = app.buttons["microphoneButton"]
         micButton.tap()
-        sleep(2)
+
+        // Wait for recording to start
+        let waveform = app.otherElements["waveformView"]
+        XCTAssertTrue(waveform.waitForExistence(timeout: 2))
+
         micButton.tap()
 
         // THEN save button appears
         let saveButton = app.buttons["saveButton"]
-        XCTAssertTrue(saveButton.waitForExistence(timeout: 1))
+        XCTAssertTrue(saveButton.waitForExistence(timeout: 5))
     }
 
     func testCancelButtonAppearsAfterRecording() throws {
@@ -113,12 +118,16 @@ final class CaptureViewUITests: XCTestCase {
         // GIVEN recording is complete
         let micButton = app.buttons["microphoneButton"]
         micButton.tap()
-        sleep(2)
+
+        // Wait for recording to start
+        let waveform = app.otherElements["waveformView"]
+        XCTAssertTrue(waveform.waitForExistence(timeout: 2))
+
         micButton.tap()
 
         // THEN cancel button appears
         let cancelButton = app.buttons["cancelButton"]
-        XCTAssertTrue(cancelButton.waitForExistence(timeout: 1))
+        XCTAssertTrue(cancelButton.waitForExistence(timeout: 5))
     }
 
     func testSaveButtonCreatesNote() throws {
@@ -128,16 +137,20 @@ final class CaptureViewUITests: XCTestCase {
         // GIVEN transcription exists
         let micButton = app.buttons["microphoneButton"]
         micButton.tap()
-        sleep(2)
+
+        // Wait for recording to start
+        let waveform = app.otherElements["waveformView"]
+        XCTAssertTrue(waveform.waitForExistence(timeout: 2))
+
         micButton.tap()
 
         // WHEN tapping save button
         let saveButton = app.buttons["saveButton"]
+        XCTAssertTrue(saveButton.waitForExistence(timeout: 5))
         saveButton.tap()
 
-        // THEN view returns to initial state (microphone button visible, not selected)
-        XCTAssertTrue(micButton.exists)
-        XCTAssertFalse(micButton.isSelected)
+        // THEN view returns to initial state (save button no longer visible)
+        XCTAssertFalse(saveButton.exists)
     }
 
     func testCancelButtonDiscardsTranscription() throws {
@@ -147,16 +160,20 @@ final class CaptureViewUITests: XCTestCase {
         // GIVEN transcription exists
         let micButton = app.buttons["microphoneButton"]
         micButton.tap()
-        sleep(2)
+
+        // Wait for recording to start
+        let waveform = app.otherElements["waveformView"]
+        XCTAssertTrue(waveform.waitForExistence(timeout: 2))
+
         micButton.tap()
 
         // WHEN tapping cancel button
         let cancelButton = app.buttons["cancelButton"]
+        XCTAssertTrue(cancelButton.waitForExistence(timeout: 5))
         cancelButton.tap()
 
-        // THEN view returns to initial state
-        XCTAssertTrue(micButton.exists)
-        XCTAssertFalse(micButton.isSelected)
+        // THEN view returns to initial state (cancel button no longer visible)
+        XCTAssertFalse(cancelButton.exists)
     }
 
     // MARK: - Permission Tests

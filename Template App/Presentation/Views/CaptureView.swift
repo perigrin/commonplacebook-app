@@ -6,6 +6,7 @@ import SwiftUI
 struct CaptureView: View {
     @StateObject private var viewModel: CaptureViewModel
     @State private var showingPermissionAlert = false
+    @State private var isProcessingTap = false
 
     init(viewModel: CaptureViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
@@ -23,8 +24,14 @@ struct CaptureView: View {
                     // Waveform visualization (shown during recording)
                     if viewModel.isRecording {
                         WaveformView(
-                            isRecording: .constant(viewModel.isRecording),
-                            audioLevel: .constant(viewModel.audioLevel),
+                            isRecording: Binding(
+                                get: { viewModel.isRecording },
+                                set: { _ in }
+                            ),
+                            audioLevel: Binding(
+                                get: { viewModel.audioLevel },
+                                set: { _ in }
+                            ),
                             waveformColor: .blue
                         )
                         .frame(height: 80)
@@ -57,14 +64,13 @@ struct CaptureView: View {
             } message: {
                 Text("Speech recognition permission is required to capture notes. Please enable it in Settings.")
             }
-            .alert(isPresented: .constant(viewModel.error != nil)) {
-                Alert(
-                    title: Text("Error"),
-                    message: Text(viewModel.error?.localizedDescription ?? "An unknown error occurred"),
-                    dismissButton: .default(Text("OK")) {
-                        viewModel.error = nil
-                    }
-                )
+            .alert("Error", isPresented: Binding(
+                get: { viewModel.error != nil },
+                set: { _ in viewModel.error = nil }
+            )) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(viewModel.error?.localizedDescription ?? "An unknown error occurred")
             }
         }
         .accessibilityIdentifier("Capture")
@@ -154,38 +160,51 @@ struct CaptureView: View {
 
     // MARK: - Actions
 
+    @MainActor
     private func handleMicrophoneTap() {
+        guard !isProcessingTap else { return }
+        isProcessingTap = true
+
         if viewModel.isRecording {
             // Stop recording
             Task {
-                _ = await viewModel.stopRecording()
+                let note = await viewModel.stopRecording()
+                isProcessingTap = false
+
+                if note == nil && !viewModel.transcription.isEmpty {
+                    // Show feedback that transcription was empty
+                    viewModel.error = CaptureViewModelError.emptyTranscription
+                }
             }
         } else {
             // Start recording
             Task {
                 await viewModel.startRecording()
+                isProcessingTap = false
 
                 // Check if permission was denied
-                if let error = viewModel.error {
-                    let errorString = String(describing: error)
-                    if errorString.contains("permission") || errorString.contains("Permission") {
-                        showingPermissionAlert = true
-                    }
+                if let error = viewModel.error as? CaptureViewModelError,
+                   case .permissionDenied = error {
+                    showingPermissionAlert = true
                 }
             }
         }
     }
 
+    @MainActor
     private func handleSave() {
         Task {
             if let note = await viewModel.saveNote() {
                 // Note saved successfully
-                // Could navigate back or show confirmation
+                // Could show confirmation or haptic feedback
+                #if DEBUG
                 print("Note saved: \(note.id)")
+                #endif
             }
         }
     }
 
+    @MainActor
     private func handleCancel() {
         viewModel.cancelRecording()
     }

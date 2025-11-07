@@ -223,11 +223,14 @@ class CaptureViewModel: ObservableObject {
 /// Errors specific to capture view model
 enum CaptureViewModelError: LocalizedError {
     case permissionDenied
+    case emptyTranscription
 
     var errorDescription: String? {
         switch self {
         case .permissionDenied:
             return "Microphone and speech recognition permissions are required"
+        case .emptyTranscription:
+            return "No audio was captured. Please try recording again."
         }
     }
 }
