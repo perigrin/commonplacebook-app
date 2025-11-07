@@ -35,9 +35,8 @@ final class MetadataCollectorTests: XCTestCase {
         let device = await collector.getCurrentDevice()
 
         // Then
-        // Device name should be a readable format like "iPhone 15 Pro", "iPad Pro", "Mac"
-        // Not a technical identifier like "iPhone15,2"
-        XCTAssertFalse(device.contains(","), "Device name should not contain technical identifiers")
+        // Device name should be readable and descriptive
+        // It may be user-assigned (e.g., "John's iPhone") or system name
         XCTAssertTrue(device.count > 3, "Device name should be descriptive")
     }
 
@@ -215,6 +214,28 @@ final class MetadataCollectorTests: XCTestCase {
             XCTAssertGreaterThan(location.accuracy, 0.0, "Accuracy should be positive")
             XCTAssertEqual(location.accuracy, 15.5, accuracy: 0.01)
         }
+    }
+
+    func testGetCurrentLocationReturnsNilForNegativeAccuracy() async {
+        // Given - Mock with negative accuracy (invalid reading)
+        let mockCLLocation = CLLocation(
+            coordinate: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194),
+            altitude: 0,
+            horizontalAccuracy: -1.0,  // Negative accuracy indicates invalid
+            verticalAccuracy: 10.0,
+            timestamp: Date()
+        )
+        let mockLocationManager = MockCLLocationManager(
+            authorizationStatus: .authorizedWhenInUse,
+            currentLocation: mockCLLocation
+        )
+        let collectorWithMock = MetadataCollector(locationManager: mockLocationManager)
+
+        // When
+        let location = await collectorWithMock.getCurrentLocation()
+
+        // Then
+        XCTAssertNil(location, "Location should be nil for negative accuracy (invalid reading)")
     }
 
     func testGetCurrentLocationReturnsNilWhenLocationUnavailable() async {

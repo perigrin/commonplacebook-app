@@ -55,6 +55,12 @@ actor MetadataCollector {
                 return nil
             }
 
+            // Check for valid accuracy (negative accuracy indicates invalid reading)
+            guard clLocation.horizontalAccuracy >= 0 else {
+                // Invalid location fix
+                return nil
+            }
+
             // Convert CLLocation to our Location model
             return Location(
                 latitude: clLocation.coordinate.latitude,

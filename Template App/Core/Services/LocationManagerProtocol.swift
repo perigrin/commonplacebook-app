@@ -26,7 +26,11 @@ class ProductionLocationManager: NSObject, LocationManagerProtocol {
     }
 
     func authorizationStatus() -> CLAuthorizationStatus {
-        return manager.authorizationStatus
+        if #available(iOS 14.0, macOS 11.0, *) {
+            return manager.authorizationStatus
+        } else {
+            return CLLocationManager.authorizationStatus()
+        }
     }
 
     func requestWhenInUseAuthorization() {
@@ -34,7 +38,18 @@ class ProductionLocationManager: NSObject, LocationManagerProtocol {
     }
 
     func location() -> CLLocation? {
-        return manager.location
+        guard let loc = manager.location else {
+            return nil
+        }
+
+        // Reject locations older than 60 seconds to avoid stale data
+        // Note: This returns cached location only. For fresh location,
+        // caller should implement requestLocation() or startUpdatingLocation()
+        if abs(loc.timestamp.timeIntervalSinceNow) > 60 {
+            return nil
+        }
+
+        return loc
     }
 }
 

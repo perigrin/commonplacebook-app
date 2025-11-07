@@ -14,7 +14,7 @@ import IOKit
 enum DeviceInfo {
 
     /// Get the current device name
-    /// - Returns: Human-readable device name (e.g., "iPhone 15 Pro", "iPad Air", "Mac")
+    /// - Returns: Human-readable device name (e.g., "John's iPhone", "iPad Air", "Mac")
     static func getCurrentDeviceName() -> String {
         #if os(iOS)
         return UIDevice.current.name
@@ -33,6 +33,11 @@ enum DeviceInfo {
             kIOMainPortDefault,
             IOServiceMatching("IOPlatformExpertDevice")
         )
+
+        // Check for invalid service handle
+        guard service != 0 else {
+            return "Mac"
+        }
 
         // Ensure service is always released, even if an error occurs
         defer { IOObjectRelease(service) }
