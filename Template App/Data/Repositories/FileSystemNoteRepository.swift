@@ -12,7 +12,14 @@ actor FileSystemNoteRepository: NoteRepository {
 
     // In-memory cache for performance
     private var cache: [UUID: Note] = [:]
-    private var cacheLoaded = false
+
+    // Cache loading state to prevent concurrent loads
+    private enum CacheState {
+        case notLoaded
+        case loading(Task<Void, Error>)
+        case loaded
+    }
+    private var cacheState: CacheState = .notLoaded
 
     init(directory: URL) {
         self.directory = directory
@@ -140,9 +147,38 @@ actor FileSystemNoteRepository: NoteRepository {
     }
 
     /// Load all notes from disk into cache (lazy loading)
+    /// Uses Task-based state to prevent concurrent loading
     private func loadCacheIfNeeded() async throws {
-        guard !cacheLoaded else { return }
+        switch cacheState {
+        case .loaded:
+            // Already loaded, nothing to do
+            return
 
+        case .loading(let task):
+            // Another task is loading, wait for it to complete
+            try await task.value
+            return
+
+        case .notLoaded:
+            // Create a new loading task
+            let loadTask = Task { [weak self] in
+                guard let self = self else { return }
+                try await self.performCacheLoad()
+            }
+
+            // Set state to loading
+            cacheState = .loading(loadTask)
+
+            // Wait for load to complete
+            try await loadTask.value
+
+            // Mark as loaded
+            cacheState = .loaded
+        }
+    }
+
+    /// Perform the actual cache loading from disk
+    private func performCacheLoad() async throws {
         try ensureDirectoryExists()
 
         // Scan directory for .md files
@@ -166,8 +202,6 @@ actor FileSystemNoteRepository: NoteRepository {
                 continue
             }
         }
-
-        cacheLoaded = true
     }
 
     /// Get file path for a note ID
@@ -175,22 +209,33 @@ actor FileSystemNoteRepository: NoteRepository {
         return directory.appendingPathComponent("\(id.uuidString).md")
     }
 
-    /// Write note to disk using atomic write (write to temp, then rename)
+    /// Write note to disk using atomic write (write to temp, then replace)
     private func writeNoteToDisk(note: Note) async throws {
         let content = formatter.serialize(note: note)
         let finalPath = noteFilePath(for: note.id)
 
-        // Atomic write: write to temporary file, then rename
-        // This ensures the file is never in a partial state
-        let tempPath = directory.appendingPathComponent("\(UUID().uuidString).tmp")
+        // Use a hidden temp file in the same directory for atomic replacement
+        let tempPath = directory.appendingPathComponent(".\(note.id.uuidString).tmp")
 
+        // Write to temporary file first
         try content.write(to: tempPath, atomically: true, encoding: .utf8)
 
-        // Rename temp file to final path (atomic operation on most filesystems)
+        // Use replaceItemAt for true atomic replacement
+        // If finalPath exists, it will be replaced atomically
+        // If it doesn't exist, moveItem will be used as fallback
         if fileManager.fileExists(atPath: finalPath.path) {
-            try fileManager.removeItem(at: finalPath)
+            // replaceItemAt ensures the original file is not removed until
+            // the replacement is successful, preventing data loss
+            _ = try fileManager.replaceItemAt(
+                finalPath,
+                withItemAt: tempPath,
+                backupItemName: nil,
+                options: []
+            )
+        } else {
+            // For new files, simple move is safe
+            try fileManager.moveItem(at: tempPath, to: finalPath)
         }
-        try fileManager.moveItem(at: tempPath, to: finalPath)
     }
 
     /// Read note from disk

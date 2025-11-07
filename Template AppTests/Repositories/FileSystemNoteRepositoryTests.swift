@@ -555,4 +555,68 @@ final class FileSystemNoteRepositoryTests: XCTestCase {
         let content = try String(contentsOf: filePath, encoding: .utf8)
         _ = try formatter.deserialize(content: content) // Should not throw
     }
+
+    func testConcurrentCacheLoadingDoesNotCauseRaceCondition() async throws {
+        // Given - Create some notes on disk before creating repository
+        let note1 = Note(
+            id: UUID(),
+            created: Date(),
+            device: "Device1",
+            location: nil,
+            content: "Content 1",
+            title: "Note 1",
+            backlinks: [],
+            unknownFrontmatterFields: [:]
+        )
+        let note2 = Note(
+            id: UUID(),
+            created: Date(),
+            device: "Device2",
+            location: nil,
+            content: "Content 2",
+            title: "Note 2",
+            backlinks: [],
+            unknownFrontmatterFields: [:]
+        )
+
+        // Write notes directly to disk
+        try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
+        let content1 = formatter.serialize(note: note1)
+        let content2 = formatter.serialize(note: note2)
+        try content1.write(to: tempDirectory.appendingPathComponent("\(note1.id.uuidString).md"),
+                          atomically: true, encoding: .utf8)
+        try content2.write(to: tempDirectory.appendingPathComponent("\(note2.id.uuidString).md"),
+                          atomically: true, encoding: .utf8)
+
+        // Create a fresh repository that hasn't loaded cache yet
+        let freshRepo = await FileSystemNoteRepository(directory: tempDirectory)
+
+        // When - Trigger 50 concurrent operations that all require cache loading
+        try await withThrowingTaskGroup(of: Note?.self) { group in
+            for _ in 0..<50 {
+                group.addTask {
+                    // Each of these will call loadCacheIfNeeded()
+                    return try await freshRepo.read(id: note1.id)
+                }
+            }
+
+            // Collect all results
+            var results: [Note?] = []
+            for try await result in group {
+                results.append(result)
+            }
+
+            // Then - All reads should succeed and return the same note
+            XCTAssertEqual(results.count, 50, "All concurrent reads should complete")
+            for result in results {
+                XCTAssertNotNil(result)
+                XCTAssertEqual(result?.id, note1.id)
+                XCTAssertEqual(result?.content, "Content 1")
+            }
+        }
+
+        // Verify the cache was loaded correctly and contains both notes
+        let allNotes = try await freshRepo.list()
+        XCTAssertEqual(allNotes.count, 2, "Cache should contain both notes")
+    }
 }
