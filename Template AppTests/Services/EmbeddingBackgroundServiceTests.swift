@@ -418,11 +418,11 @@ actor MockNoteRepository: NoteRepository {
 actor MockVectorSearchEngine {
     var indexedNotes: [UUID] = []
 
-    func indexNote(id: UUID, embedding: [Float]) throws {
+    func indexNote(id: UUID, embedding: [Float]) async throws {
         indexedNotes.append(id)
     }
 
-    func removeNote(id: UUID) {
+    func removeNote(id: UUID) async {
         indexedNotes.removeAll { $0 == id }
     }
 
@@ -430,7 +430,7 @@ actor MockVectorSearchEngine {
         return []
     }
 
-    func rebuild() {
+    func rebuild() async {
         indexedNotes.removeAll()
     }
 }

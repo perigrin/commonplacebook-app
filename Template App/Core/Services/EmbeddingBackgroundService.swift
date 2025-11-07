@@ -20,11 +20,16 @@ class EmbeddingBackgroundService {
     private let searchEngine: VectorSearchEngine
     private let storageDirectory: URL
     private let batchSize: Int
+    private let maxRetries: Int = 3
 
     private var processingQueue: [UUID] = []
     private var processedNotes: Set<UUID> = []
+    private var successfulNotes: Set<UUID> = []
+    private var failedNotes: [UUID: Int] = [:] // noteId -> retry count
     private var embeddings: [UUID: [Float]] = [:]
     private var processingTask: Task<Void, Never>?
+    private var totalNotesToProcess: Int = 0
+    private var notesProcessedCount: Int = 0
 
     // MARK: - Initialization
 
@@ -71,12 +76,13 @@ class EmbeddingBackgroundService {
     /// Queue a note for embedding generation
     /// - Parameter id: Note UUID to queue
     func queueNote(id: UUID) async {
-        // Skip if already processed
+        // Skip if already processed successfully
         guard !processedNotes.contains(id) else { return }
 
         // Add to queue if not already queued
         if !processingQueue.contains(id) {
             processingQueue.append(id)
+            totalNotesToProcess += 1
             updateProgress()
         }
     }
@@ -85,21 +91,32 @@ class EmbeddingBackgroundService {
 
     /// Process queued notes in batches
     private func processQueue() async {
-        while isProcessing && !processingQueue.isEmpty {
-            // Get next batch
-            let batchSize = min(self.batchSize, processingQueue.count)
-            let batch = Array(processingQueue.prefix(batchSize))
+        while !Task.isCancelled && await MainActor.run({ isProcessing }) {
+            // Get next batch atomically
+            let batch = await MainActor.run { () -> [UUID] in
+                guard !processingQueue.isEmpty else { return [] }
+                let batchSize = min(self.batchSize, processingQueue.count)
+                let extracted = Array(processingQueue.prefix(batchSize))
+                processingQueue.removeFirst(batchSize)
+                return extracted
+            }
+
+            guard !batch.isEmpty else { break }
 
             // Process batch
             await processBatch(batch)
 
-            // Remove processed notes from queue
+            // Update progress after batch
             await MainActor.run {
-                processingQueue.removeFirst(batchSize)
                 updateProgress()
             }
 
-            // Small delay between batches to avoid overwhelming the system
+            // Check cancellation after batch
+            if Task.isCancelled {
+                break
+            }
+
+            // Small delay between batches
             try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
         }
 
@@ -113,9 +130,13 @@ class EmbeddingBackgroundService {
     /// Process a batch of notes
     /// - Parameter batch: Array of note UUIDs to process
     private func processBatch(_ batch: [UUID]) async {
+        var batchUpdates: [(UUID, [Float])] = []
+
         for noteId in batch {
-            // Skip if already processed
-            guard !processedNotes.contains(noteId) else { continue }
+            // Skip if already processed successfully
+            if await MainActor.run({ processedNotes.contains(noteId) }) {
+                continue
+            }
 
             do {
                 // Fetch note content
@@ -126,38 +147,59 @@ class EmbeddingBackgroundService {
                 // Generate embedding
                 let embedding = try await embeddingService.generateEmbedding(for: note.content)
 
-                // Store embedding
-                await MainActor.run {
-                    embeddings[noteId] = embedding
-                    processedNotes.insert(noteId)
-                }
-
-                // Index in search engine
-                try await searchEngine.indexNote(id: noteId, embedding: embedding)
-
-                // Persist after each successful generation
-                await persistEmbeddings()
+                // Collect for batch update
+                batchUpdates.append((noteId, embedding))
 
             } catch {
-                // Log error and continue processing
+                // Log error and handle retry
                 print("Error processing note \(noteId): \(error)")
-                // Note remains in processedNotes to avoid infinite retries
+
                 await MainActor.run {
-                    processedNotes.insert(noteId)
+                    let retryCount = failedNotes[noteId] ?? 0
+                    if retryCount < maxRetries {
+                        // Retry with exponential backoff
+                        failedNotes[noteId] = retryCount + 1
+                        processingQueue.append(noteId)
+                    } else {
+                        // Max retries exceeded, mark as processed
+                        processedNotes.insert(noteId)
+                        failedNotes.removeValue(forKey: noteId)
+                        notesProcessedCount += 1
+                    }
                 }
             }
         }
+
+        // Apply batch updates atomically on MainActor
+        await MainActor.run {
+            for (noteId, embedding) in batchUpdates {
+                embeddings[noteId] = embedding
+                processedNotes.insert(noteId)
+                successfulNotes.insert(noteId)
+                notesProcessedCount += 1
+                failedNotes.removeValue(forKey: noteId)
+            }
+        }
+
+        // Index all successful embeddings in search engine
+        for (noteId, embedding) in batchUpdates {
+            try? await searchEngine.indexNote(id: noteId, embedding: embedding)
+        }
+
+        // Persist ONCE after entire batch
+        if !batchUpdates.isEmpty {
+            await persistEmbeddings()
+        }
     }
 
-    /// Update progress based on queue length
+    /// Update progress based on processed count
     private func updateProgress() {
-        let total = processingQueue.count + processedNotes.count
-        guard total > 0 else {
+        guard totalNotesToProcess > 0 else {
             progress = 1.0
             return
         }
 
-        progress = Float(processedNotes.count) / Float(total)
+        progress = Float(notesProcessedCount) / Float(totalNotesToProcess)
     }
 
     // MARK: - Persistence
@@ -167,8 +209,11 @@ class EmbeddingBackgroundService {
         do {
             let embeddingsFile = storageDirectory.appendingPathComponent("embeddings.json")
 
+            // Get snapshot of embeddings on MainActor
+            let embeddingsSnapshot = await MainActor.run { embeddings }
+
             // Convert embeddings to serializable format
-            let data: [String: [Float]] = embeddings.reduce(into: [:]) { result, pair in
+            let data: [String: [Float]] = embeddingsSnapshot.reduce(into: [:]) { result, pair in
                 result[pair.key.uuidString] = pair.value
             }
 
@@ -197,18 +242,28 @@ class EmbeddingBackgroundService {
             let jsonData = try Data(contentsOf: embeddingsFile)
             let data = try JSONDecoder().decode([String: [Float]].self, from: jsonData)
 
-            // Convert back to UUID keys
-            await MainActor.run {
-                embeddings = data.reduce(into: [:]) { result, pair in
-                    if let uuid = UUID(uuidString: pair.key) {
-                        result[uuid] = pair.value
-                        processedNotes.insert(uuid)
-                    }
+            // Convert back to UUID keys and update state on MainActor
+            var loadedEmbeddings: [UUID: [Float]] = [:]
+            var loadedProcessed: Set<UUID> = []
+            var loadedSuccessful: Set<UUID> = []
+
+            for (key, value) in data {
+                if let uuid = UUID(uuidString: key) {
+                    loadedEmbeddings[uuid] = value
+                    loadedProcessed.insert(uuid)
+                    loadedSuccessful.insert(uuid)
                 }
             }
 
+            await MainActor.run {
+                embeddings = loadedEmbeddings
+                processedNotes = loadedProcessed
+                successfulNotes = loadedSuccessful
+                notesProcessedCount = loadedSuccessful.count
+            }
+
             // Re-index all loaded embeddings
-            for (noteId, embedding) in embeddings {
+            for (noteId, embedding) in loadedEmbeddings {
                 try? await searchEngine.indexNote(id: noteId, embedding: embedding)
             }
 
