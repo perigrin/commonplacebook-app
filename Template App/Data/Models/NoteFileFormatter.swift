@@ -2,6 +2,7 @@
 // ABOUTME: Handles conversion between Note objects and file format with metadata preservation
 
 import Foundation
+import Yams
 
 /// Formats notes as markdown files with YAML frontmatter
 class NoteFileFormatter {
@@ -153,92 +154,19 @@ class NoteFileFormatter {
         return (frontmatter, contentBody)
     }
 
-    /// Parse YAML string into dictionary
-    /// This is a simple YAML parser for our specific format
+    /// Parse YAML string into dictionary using Yams library
+    /// Yams is a production-ready YAML 1.2 parser that handles all edge cases correctly
     private func parseYAML(_ yaml: String) throws -> [String: Any] {
-        var result: [String: Any] = [:]
-        let lines = yaml.components(separatedBy: .newlines)
-
-        var currentKey: String?
-        var currentIndentLevel = 0
-        var currentArray: [String] = []
-        var currentDict: [String: Any] = [:]
-        var inArray = false
-        var inDict = false
-
-        for line in lines {
-            guard !line.trimmingCharacters(in: .whitespaces).isEmpty else { continue }
-
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            let indentLevel = line.prefix(while: { $0 == " " }).count
-
-            // Handle array items
-            if trimmed.hasPrefix("- ") {
-                let value = String(trimmed.dropFirst(2))
-                currentArray.append(value)
-                inArray = true
-                continue
+        do {
+            guard let parsed = try Yams.load(yaml: yaml) as? [String: Any] else {
+                throw NoteFileFormatterError.invalidYAML("YAML did not parse to dictionary")
             }
-
-            // If we were building an array, save it
-            if inArray && !trimmed.hasPrefix("- ") {
-                if let key = currentKey {
-                    result[key] = currentArray
-                }
-                currentArray = []
-                inArray = false
-            }
-
-            // If we were building a dict, save it
-            if inDict && indentLevel == 0 {
-                if let key = currentKey {
-                    result[key] = currentDict
-                }
-                currentDict = [:]
-                inDict = false
-            }
-
-            // Parse key-value pairs
-            if let colonIndex = trimmed.firstIndex(of: ":") {
-                let key = String(trimmed[..<colonIndex])
-                let valueStart = trimmed.index(after: colonIndex)
-                let value = String(trimmed[valueStart...]).trimmingCharacters(in: .whitespaces)
-
-                if indentLevel > 0 {
-                    // This is a nested value
-                    if let doubleValue = Double(value) {
-                        currentDict[key] = doubleValue
-                    } else {
-                        currentDict[key] = value
-                    }
-                    inDict = true
-                } else {
-                    // Top-level key
-                    if value.isEmpty {
-                        // Key with no value - expect nested content
-                        currentKey = key
-                        currentIndentLevel = indentLevel
-                    } else if value == "[]" {
-                        // Empty array
-                        result[key] = []
-                    } else {
-                        // Simple value
-                        result[key] = value
-                        currentKey = nil
-                    }
-                }
-            }
+            return parsed
+        } catch let error as YamlError {
+            throw NoteFileFormatterError.invalidYAML("Yams parsing error: \(error)")
+        } catch {
+            throw NoteFileFormatterError.parsingError("Unexpected YAML parsing error: \(error)")
         }
-
-        // Save any remaining array or dict
-        if inArray, let key = currentKey {
-            result[key] = currentArray
-        }
-        if inDict, let key = currentKey {
-            result[key] = currentDict
-        }
-
-        return result
     }
 
     /// Serialize an Any value to YAML-compatible string
