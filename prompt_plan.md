@@ -256,7 +256,7 @@ Use Swift actors for thread safety.
 
 ---
 
-#### Step 4: File System Note Storage
+#### Step 4: File System Note Storage ✅
 
 **Goal**: Persist notes to disk as markdown files
 
