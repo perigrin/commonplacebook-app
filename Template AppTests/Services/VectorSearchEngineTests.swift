@@ -8,8 +8,9 @@ final class VectorSearchEngineTests: XCTestCase {
     var searchEngine: VectorSearchEngine!
     var mockEmbeddingService: MockEmbeddingService!
 
-    override func setUpWithError() throws {
+    override func setUpWithError() async throws {
         mockEmbeddingService = MockEmbeddingService()
+        try await mockEmbeddingService.loadModel()
         searchEngine = VectorSearchEngine(embeddingService: mockEmbeddingService)
     }
 
@@ -26,10 +27,10 @@ final class VectorSearchEngineTests: XCTestCase {
         let embedding = generateTestEmbedding(seed: 1)
 
         // WHEN indexing note
-        await searchEngine.indexNote(id: noteId, embedding: embedding)
+        try await searchEngine.indexNote(id: noteId, embedding: embedding)
 
         // THEN note can be found in search
-        mockEmbeddingService.testEmbedding = embedding
+        await mockEmbeddingService.setTestEmbedding(embedding)
         let results = try await searchEngine.search(query: "test", threshold: 0.5)
 
         XCTAssertEqual(results.count, 1)
@@ -43,12 +44,12 @@ final class VectorSearchEngineTests: XCTestCase {
         let note3 = UUID()
 
         // WHEN indexing multiple notes
-        await searchEngine.indexNote(id: note1, embedding: generateTestEmbedding(seed: 1))
-        await searchEngine.indexNote(id: note2, embedding: generateTestEmbedding(seed: 2))
-        await searchEngine.indexNote(id: note3, embedding: generateTestEmbedding(seed: 3))
+        try await searchEngine.indexNote(id: note1, embedding: generateTestEmbedding(seed: 1)
+        try await searchEngine.indexNote(id: note2, embedding: generateTestEmbedding(seed: 2)
+        try await searchEngine.indexNote(id: note3, embedding: generateTestEmbedding(seed: 3)
 
         // THEN all notes can be retrieved
-        mockEmbeddingService.testEmbedding = generateTestEmbedding(seed: 1)
+        await mockEmbeddingService.setTestEmbedding(generateTestEmbedding(seed: 1)
         let results = try await searchEngine.search(query: "test", threshold: 0.0)
 
         XCTAssertGreaterThanOrEqual(results.count, 3, "Should find at least 3 indexed notes")
@@ -58,14 +59,14 @@ final class VectorSearchEngineTests: XCTestCase {
         // GIVEN note indexed once
         let noteId = UUID()
         let oldEmbedding = generateTestEmbedding(seed: 1)
-        await searchEngine.indexNote(id: noteId, embedding: oldEmbedding)
+        try await searchEngine.indexNote(id: noteId, embedding: oldEmbedding)
 
         // WHEN indexing same note with different embedding
         let newEmbedding = generateTestEmbedding(seed: 99)
-        await searchEngine.indexNote(id: noteId, embedding: newEmbedding)
+        try await searchEngine.indexNote(id: noteId, embedding: newEmbedding)
 
         // THEN search uses new embedding
-        mockEmbeddingService.testEmbedding = newEmbedding
+        await mockEmbeddingService.setTestEmbedding(newEmbedding)
         let results = try await searchEngine.search(query: "test", threshold: 0.9)
 
         XCTAssertEqual(results.count, 1, "Should find note with updated embedding")
@@ -84,11 +85,11 @@ final class VectorSearchEngineTests: XCTestCase {
         let similarEmbedding = generateTestEmbedding(seed: 11) // Similar seed should give similar embedding
         let differentEmbedding = generateTestEmbedding(seed: 999)
 
-        await searchEngine.indexNote(id: relevantNote, embedding: similarEmbedding)
-        await searchEngine.indexNote(id: irrelevantNote, embedding: differentEmbedding)
+        try await searchEngine.indexNote(id: relevantNote, embedding: similarEmbedding)
+        try await searchEngine.indexNote(id: irrelevantNote, embedding: differentEmbedding)
 
         // WHEN searching
-        mockEmbeddingService.testEmbedding = queryEmbedding
+        await mockEmbeddingService.setTestEmbedding(queryEmbedding)
         let results = try await searchEngine.search(query: "test query", threshold: 0.5)
 
         // THEN finds relevant note
@@ -105,12 +106,12 @@ final class VectorSearchEngineTests: XCTestCase {
 
         let queryEmbedding = generateTestEmbedding(seed: 50)
 
-        await searchEngine.indexNote(id: highSimilarNote, embedding: queryEmbedding) // Exact match
-        await searchEngine.indexNote(id: mediumSimilarNote, embedding: generateTestEmbedding(seed: 51))
-        await searchEngine.indexNote(id: lowSimilarNote, embedding: generateTestEmbedding(seed: 900))
+        try await searchEngine.indexNote(id: highSimilarNote, embedding: queryEmbedding) // Exact match
+        try await searchEngine.indexNote(id: mediumSimilarNote, embedding: generateTestEmbedding(seed: 51)
+        try await searchEngine.indexNote(id: lowSimilarNote, embedding: generateTestEmbedding(seed: 900)
 
         // WHEN searching with high threshold
-        mockEmbeddingService.testEmbedding = queryEmbedding
+        await mockEmbeddingService.setTestEmbedding(queryEmbedding)
         let results = try await searchEngine.search(query: "test", threshold: 0.9)
 
         // THEN only high similarity notes returned
@@ -126,12 +127,12 @@ final class VectorSearchEngineTests: XCTestCase {
         let note2 = UUID()
         let note3 = UUID()
 
-        await searchEngine.indexNote(id: note1, embedding: generateTestEmbedding(seed: 100))
-        await searchEngine.indexNote(id: note2, embedding: generateTestEmbedding(seed: 101))
-        await searchEngine.indexNote(id: note3, embedding: generateTestEmbedding(seed: 102))
+        try await searchEngine.indexNote(id: note1, embedding: generateTestEmbedding(seed: 100)
+        try await searchEngine.indexNote(id: note2, embedding: generateTestEmbedding(seed: 101)
+        try await searchEngine.indexNote(id: note3, embedding: generateTestEmbedding(seed: 102)
 
         // WHEN searching
-        mockEmbeddingService.testEmbedding = generateTestEmbedding(seed: 100)
+        await mockEmbeddingService.setTestEmbedding(generateTestEmbedding(seed: 100)
         let results = try await searchEngine.search(query: "test", threshold: 0.0)
 
         // THEN results sorted by descending relevance
@@ -146,7 +147,7 @@ final class VectorSearchEngineTests: XCTestCase {
     func testSearchEmptyIndexReturnsNoResults() async throws {
         // GIVEN empty index
         // WHEN searching
-        mockEmbeddingService.testEmbedding = generateTestEmbedding(seed: 1)
+        await mockEmbeddingService.setTestEmbedding(generateTestEmbedding(seed: 1)
         let results = try await searchEngine.search(query: "test", threshold: 0.5)
 
         // THEN returns empty array
@@ -156,10 +157,10 @@ final class VectorSearchEngineTests: XCTestCase {
     func testSearchWithEmptyQueryStillWorks() async throws {
         // GIVEN indexed note
         let noteId = UUID()
-        await searchEngine.indexNote(id: noteId, embedding: generateTestEmbedding(seed: 1))
+        try await searchEngine.indexNote(id: noteId, embedding: generateTestEmbedding(seed: 1)
 
         // WHEN searching with empty query
-        mockEmbeddingService.testEmbedding = generateTestEmbedding(seed: 1)
+        await mockEmbeddingService.setTestEmbedding(generateTestEmbedding(seed: 1)
         let results = try await searchEngine.search(query: "", threshold: 0.5)
 
         // THEN still performs search (empty string has embedding)
@@ -171,14 +172,14 @@ final class VectorSearchEngineTests: XCTestCase {
         let note1 = UUID()
         let note2 = UUID()
 
-        await searchEngine.indexNote(id: note1, embedding: generateTestEmbedding(seed: 10))
-        await searchEngine.indexNote(id: note2, embedding: generateTestEmbedding(seed: 90))
+        try await searchEngine.indexNote(id: note1, embedding: generateTestEmbedding(seed: 10)
+        try await searchEngine.indexNote(id: note2, embedding: generateTestEmbedding(seed: 90)
 
         // WHEN searching with similar queries
-        mockEmbeddingService.testEmbedding = generateTestEmbedding(seed: 10)
+        await mockEmbeddingService.setTestEmbedding(generateTestEmbedding(seed: 10)
         let results1 = try await searchEngine.search(query: "query about topic A", threshold: 0.5)
 
-        mockEmbeddingService.testEmbedding = generateTestEmbedding(seed: 11)
+        await mockEmbeddingService.setTestEmbedding(generateTestEmbedding(seed: 11)
         let results2 = try await searchEngine.search(query: "similar query about topic A", threshold: 0.5)
 
         // THEN results overlap significantly
@@ -194,10 +195,10 @@ final class VectorSearchEngineTests: XCTestCase {
     func testRemoveNoteDeletesFromIndex() async throws {
         // GIVEN indexed note
         let noteId = UUID()
-        await searchEngine.indexNote(id: noteId, embedding: generateTestEmbedding(seed: 1))
+        try await searchEngine.indexNote(id: noteId, embedding: generateTestEmbedding(seed: 1)
 
         // Verify it's indexed
-        mockEmbeddingService.testEmbedding = generateTestEmbedding(seed: 1)
+        await mockEmbeddingService.setTestEmbedding(generateTestEmbedding(seed: 1)
         let beforeResults = try await searchEngine.search(query: "test", threshold: 0.5)
         XCTAssertTrue(beforeResults.contains(where: { $0.noteId == noteId }), "Note should be indexed initially")
 
@@ -227,14 +228,14 @@ final class VectorSearchEngineTests: XCTestCase {
         let note1 = UUID()
         let note2 = UUID()
 
-        await searchEngine.indexNote(id: note1, embedding: generateTestEmbedding(seed: 1))
-        await searchEngine.indexNote(id: note2, embedding: generateTestEmbedding(seed: 2))
+        try await searchEngine.indexNote(id: note1, embedding: generateTestEmbedding(seed: 1)
+        try await searchEngine.indexNote(id: note2, embedding: generateTestEmbedding(seed: 2)
 
         // WHEN rebuilding
         await searchEngine.rebuild()
 
         // THEN index is empty
-        mockEmbeddingService.testEmbedding = generateTestEmbedding(seed: 1)
+        await mockEmbeddingService.setTestEmbedding(generateTestEmbedding(seed: 1)
         let results = try await searchEngine.search(query: "test", threshold: 0.0)
 
         XCTAssertEqual(results.count, 0, "Rebuild should clear all indexed notes")
@@ -248,12 +249,12 @@ final class VectorSearchEngineTests: XCTestCase {
 
         for i in 0..<noteCount {
             let noteId = UUID()
-            let embedding = generateTestEmbedding(seed: i)
-            await searchEngine.indexNote(id: noteId, embedding: embedding)
+            let embedding = generateTestEmbedding(seed: i))
+            try await searchEngine.indexNote(id: noteId, embedding: embedding)
         }
 
         // WHEN searching
-        mockEmbeddingService.testEmbedding = generateTestEmbedding(seed: 500)
+        await mockEmbeddingService.setTestEmbedding(generateTestEmbedding(seed: 500)
 
         let startTime = Date()
         let results = try await searchEngine.search(query: "test", threshold: 0.7)
@@ -272,14 +273,14 @@ final class VectorSearchEngineTests: XCTestCase {
             for i in 0..<100 {
                 group.addTask {
                     let noteId = UUID()
-                    let embedding = self.generateTestEmbedding(seed: i)
-                    await self.searchEngine.indexNote(id: noteId, embedding: embedding)
+                    let embedding = self.generateTestEmbedding(seed: i))
+                    try? await self.searchEngine.indexNote(id: noteId, embedding: embedding)
                 }
             }
         }
 
         // THEN no crashes and index works
-        mockEmbeddingService.testEmbedding = generateTestEmbedding(seed: 1)
+        await mockEmbeddingService.setTestEmbedding(generateTestEmbedding(seed: 1)
         let results = try await searchEngine.search(query: "test", threshold: 0.0)
 
         XCTAssertGreaterThan(results.count, 0, "Index should work after concurrent operations")
@@ -288,14 +289,14 @@ final class VectorSearchEngineTests: XCTestCase {
     func testConcurrentSearchIsSafe() async throws {
         // GIVEN indexed notes
         for i in 0..<10 {
-            await searchEngine.indexNote(id: UUID(), embedding: generateTestEmbedding(seed: i))
+            try await searchEngine.indexNote(id: UUID(), embedding: generateTestEmbedding(seed: i))
         }
 
         // WHEN performing concurrent searches
         await withTaskGroup(of: [SearchResult].self) { group in
             for i in 0..<50 {
                 group.addTask {
-                    self.mockEmbeddingService.testEmbedding = self.generateTestEmbedding(seed: i % 10)
+                    await self.mockEmbeddingService.setTestEmbedding(self.generateTestEmbedding(seed: i % 10))
                     return (try? await self.searchEngine.search(query: "test \(i)", threshold: 0.5)) ?? []
                 }
             }
@@ -335,15 +336,36 @@ final class VectorSearchEngineTests: XCTestCase {
 
 // MARK: - Mock Embedding Service
 
-class MockEmbeddingService {
-    var testEmbedding: [Float] = []
+actor MockEmbeddingService: EmbeddingServiceProtocol {
+    private var testEmbedding: [Float]
+    private var isLoaded = false
+
+    let embeddingDimension: Int = 384
 
     init() {
-        // Default to 384-dimensional zero vector
-        testEmbedding = [Float](repeating: 0.0, count: 384)
+        // Default to 384-dimensional normalized zero vector
+        self.testEmbedding = [Float](repeating: 0.0, count: 384)
+    }
+
+    func loadModel() async throws {
+        isLoaded = true
+    }
+
+    func setTestEmbedding(_ embedding: [Float]) {
+        self.testEmbedding = embedding
     }
 
     func generateEmbedding(for text: String) async throws -> [Float] {
+        guard isLoaded else {
+            throw EmbeddingServiceError.modelNotLoaded
+        }
         return testEmbedding
+    }
+
+    func generateEmbeddings(for texts: [String]) async throws -> [[Float]] {
+        guard isLoaded else {
+            throw EmbeddingServiceError.modelNotLoaded
+        }
+        return texts.map { _ in testEmbedding }
     }
 }

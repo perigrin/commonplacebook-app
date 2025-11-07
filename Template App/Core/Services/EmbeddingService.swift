@@ -14,7 +14,7 @@ enum EmbeddingServiceError: Error, Equatable {
 /// NOTE: This implementation uses word-based deterministic embeddings for testing.
 /// TODO: Replace with actual Core ML sentence transformer model (e.g., all-MiniLM-L6-v2)
 ///       See loadModel() for integration points.
-class EmbeddingService {
+class EmbeddingService: EmbeddingServiceProtocol {
 
     // MARK: - Constants
 
