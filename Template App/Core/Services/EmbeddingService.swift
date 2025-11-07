@@ -2,7 +2,6 @@
 // ABOUTME: Provides caching, batch processing, and proper interface for Core ML integration
 
 import Foundation
-import CommonCrypto
 
 /// Errors that can occur during embedding generation
 enum EmbeddingServiceError: Error, Equatable {
@@ -12,9 +11,9 @@ enum EmbeddingServiceError: Error, Equatable {
 }
 
 /// Service for generating vector embeddings for semantic search
-/// NOTE: This implementation uses deterministic hash-based embeddings for testing.
+/// NOTE: This implementation uses word-based deterministic embeddings for testing.
 /// TODO: Replace with actual Core ML sentence transformer model (e.g., all-MiniLM-L6-v2)
-@MainActor
+///       See loadModel() for integration points.
 class EmbeddingService {
 
     // MARK: - Constants
@@ -25,36 +24,36 @@ class EmbeddingService {
     // MARK: - Properties
 
     /// Dimension of embedding vectors
-    private(set) var embeddingDimension: Int
+    let embeddingDimension: Int
 
     private var isModelLoaded = false
-    private let cacheSize: Int
-
-    // LRU Cache implementation
-    private var cache: [String: [Float]] = [:]
-    private var accessOrder: [String] = []
+    private let cache: EmbeddingCache
+    private let processingQueue = DispatchQueue(label: "embedding.processing", qos: .userInitiated)
 
     // MARK: - Initialization
 
     init(embeddingDimension: Int = defaultEmbeddingDimension,
          cacheSize: Int = defaultCacheSize) {
         self.embeddingDimension = embeddingDimension
-        self.cacheSize = cacheSize
+        self.cache = EmbeddingCache(maxSize: cacheSize)
     }
 
     // MARK: - Model Management
 
     /// Load the embedding model
-    /// NOTE: Current implementation uses deterministic hash-based embeddings.
-    /// TODO: Replace with actual Core ML model loading
+    /// NOTE: Current implementation uses word-based deterministic embeddings for testing.
+    /// TODO: Replace with actual Core ML model loading:
+    /// ```
+    /// guard let modelURL = Bundle.main.url(forResource: "SentenceTransformer",
+    ///                                       withExtension: "mlmodelc") else {
+    ///     throw EmbeddingServiceError.modelLoadFailed("Model file not found")
+    /// }
+    /// let config = MLModelConfiguration()
+    /// self.model = try await MLModel.load(contentsOf: modelURL, configuration: config)
+    /// ```
     func loadModel() async throws {
-        // Simulate async model loading
+        // Simulate async model loading with short delay
         try await Task.sleep(nanoseconds: 10_000_000) // 10ms
-
-        // TODO: Load actual Core ML model here
-        // Example:
-        // let config = MLModelConfiguration()
-        // self.model = try await MLModel.load(contentsOf: modelURL, configuration: config)
 
         isModelLoaded = true
     }
@@ -71,15 +70,20 @@ class EmbeddingService {
         }
 
         // Check cache first
-        if let cachedEmbedding = getFromCache(text) {
+        if let cachedEmbedding = await cache.get(text) {
             return cachedEmbedding
         }
 
-        // Generate new embedding
-        let embedding = generateDeterministicEmbedding(for: text)
+        // Generate new embedding on background queue
+        let embedding = await withCheckedContinuation { continuation in
+            processingQueue.async {
+                let result = self.generateWordBasedEmbedding(for: text)
+                continuation.resume(returning: result)
+            }
+        }
 
         // Cache the result
-        putInCache(text, embedding)
+        await cache.put(text, embedding)
 
         return embedding
     }
@@ -99,7 +103,7 @@ class EmbeddingService {
             return []
         }
 
-        // Process in batch for efficiency
+        // Process each text (check cache, generate if needed)
         var embeddings: [[Float]] = []
 
         for text in texts {
@@ -110,67 +114,42 @@ class EmbeddingService {
         return embeddings
     }
 
-    // MARK: - Cache Management
+    // MARK: - Word-Based Embedding Generation
 
-    private func getFromCache(_ key: String) -> [Float]? {
-        guard let embedding = cache[key] else {
-            return nil
-        }
-
-        // Update access order (LRU)
-        if let index = accessOrder.firstIndex(of: key) {
-            accessOrder.remove(at: index)
-        }
-        accessOrder.append(key)
-
-        return embedding
-    }
-
-    private func putInCache(_ key: String, _ embedding: [Float]) {
-        // Evict oldest if cache is full
-        if cache.count >= cacheSize && cache[key] == nil {
-            if let oldestKey = accessOrder.first {
-                cache.removeValue(forKey: oldestKey)
-                accessOrder.removeFirst()
-            }
-        }
-
-        cache[key] = embedding
-
-        // Update access order
-        if let index = accessOrder.firstIndex(of: key) {
-            accessOrder.remove(at: index)
-        }
-        accessOrder.append(key)
-    }
-
-    // MARK: - Deterministic Embedding Generation
-
-    /// Generate deterministic embedding using text hashing
-    /// NOTE: This is a placeholder for actual Core ML model inference
-    /// TODO: Replace with real sentence transformer model
-    private func generateDeterministicEmbedding(for text: String) -> [Float] {
-        // Use multiple hash functions to generate embedding components
+    /// Generate word-based embedding for better semantic similarity
+    /// NOTE: This is a placeholder that provides better similarity than pure hashing
+    /// TODO: Replace with actual Core ML model inference
+    private func generateWordBasedEmbedding(for text: String) -> [Float] {
         var embedding = [Float](repeating: 0.0, count: embeddingDimension)
 
         let normalizedText = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
 
-        // Generate embedding using multiple hash seeds
-        let segmentSize = embeddingDimension / 4
-        for segment in 0..<4 {
-            let seed = UInt32(segment)
-            let hash = hashString(normalizedText, seed: seed)
+        // Extract words for word-based features
+        let words = normalizedText.components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
 
-            // Distribute hash bits across embedding segment
-            for i in 0..<segmentSize {
-                let bitIndex = i % 64
-                let bit = (hash >> bitIndex) & 1
-                let value = bit == 1 ? 1.0 : -1.0
+        // Use word-based features for better semantic similarity
+        for (wordIndex, word) in words.enumerated() {
+            let wordHash = hashString(word, seed: 0)
 
-                // Add some variation based on text features
-                let charValue = Float((normalizedText.count + i) % 100) / 100.0
-                embedding[segment * segmentSize + i] = value * (0.8 + 0.2 * charValue)
+            // Distribute word contribution across embedding
+            // Each word affects multiple dimensions for better overlap
+            for i in 0..<embeddingDimension {
+                let position = (Int(wordHash) + i * 7) % embeddingDimension
+                let bit = (wordHash >> (i % 64)) & 1
+                let contribution = bit == 1 ? 1.0 : -1.0
+
+                // Weight by word position (earlier words matter more)
+                let positionWeight = 1.0 / Float(wordIndex + 1)
+                embedding[position] += contribution * positionWeight * 0.3
             }
+        }
+
+        // Add character-level features for exact match detection
+        for char in normalizedText {
+            let charValue = Int(char.unicodeScalars.first?.value ?? 0)
+            let charPosition = charValue % embeddingDimension
+            embedding[charPosition] += 0.1
         }
 
         // Normalize the embedding vector (magnitude = 1.0)
@@ -190,7 +169,7 @@ class EmbeddingService {
             hash = hash &* 31 &+ UInt64(char)
         }
 
-        // Mix the hash
+        // Mix the hash thoroughly
         hash ^= hash >> 33
         hash = hash &* 0xff51afd7ed558ccd
         hash ^= hash >> 33

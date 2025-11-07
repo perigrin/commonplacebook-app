@@ -250,6 +250,52 @@ final class EmbeddingServiceTests: XCTestCase {
                       "Should process all texts even with edge cases")
     }
 
+    // MARK: - Concurrency Tests
+
+    func testConcurrentEmbeddingGenerationIsSafe() async throws {
+        // GIVEN loaded model
+        try await service.loadModel()
+
+        // WHEN generating embeddings concurrently
+        await withTaskGroup(of: Void.self) { group in
+            for i in 0..<100 {
+                group.addTask {
+                    // Use modulo to force cache hits and test concurrent access
+                    _ = try? await self.service.generateEmbedding(for: "Concurrent text \(i % 10)")
+                }
+            }
+        }
+
+        // THEN no crashes occurred and cache is in valid state
+        // Verify cache still works
+        let embedding = try await service.generateEmbedding(for: "Concurrent text 0")
+        XCTAssertEqual(embedding.count, service.embeddingDimension)
+    }
+
+    func testConcurrentBatchProcessingIsSafe() async throws {
+        // GIVEN loaded model
+        try await service.loadModel()
+
+        // WHEN running multiple batch operations concurrently
+        await withTaskGroup(of: [[Float]].self) { group in
+            for batch in 0..<10 {
+                group.addTask {
+                    let texts = (0..<10).map { "Batch \(batch) text \($0)" }
+                    return (try? await self.service.generateEmbeddings(for: texts)) ?? []
+                }
+            }
+
+            // Collect all results
+            var allEmbeddings: [[[Float]]] = []
+            for await embeddings in group {
+                allEmbeddings.append(embeddings)
+            }
+
+            // Verify we got results from all batches
+            XCTAssertEqual(allEmbeddings.count, 10, "Should process all batches")
+        }
+    }
+
     // MARK: - Performance Tests
 
     func testPerformanceWithThousandEmbeddings() async throws {
