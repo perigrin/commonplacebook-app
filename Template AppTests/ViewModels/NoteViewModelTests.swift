@@ -214,7 +214,7 @@ final class NoteViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.content, newContent)
     }
 
-    func testUpdateContentClearsError() async {
+    func testUpdateContentClearsErrorWhenBothFieldsValid() async {
         // Given
         viewModel = NoteViewModel(repository: repository, noteId: testNote.id)
         await viewModel.load()
@@ -224,11 +224,11 @@ final class NoteViewModelTests: XCTestCase {
         await viewModel.save()
         XCTAssertNotNil(viewModel.error, "Should have validation error")
 
-        // When
+        // When - Fix content (title is already valid from load)
         viewModel.updateContent("Valid content")
 
-        // Then
-        XCTAssertNil(viewModel.error, "Should clear error when content becomes valid")
+        // Then - Error should clear since both fields are now valid
+        XCTAssertNil(viewModel.error, "Should clear error when both fields become valid")
     }
 
     // MARK: - Update Title Tests
@@ -248,7 +248,7 @@ final class NoteViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.title, newTitle)
     }
 
-    func testUpdateTitleClearsError() async {
+    func testUpdateTitleClearsErrorWhenBothFieldsValid() async {
         // Given
         viewModel = NoteViewModel(repository: repository, noteId: testNote.id)
         await viewModel.load()
@@ -258,11 +258,11 @@ final class NoteViewModelTests: XCTestCase {
         await viewModel.save()
         XCTAssertNotNil(viewModel.error, "Should have validation error")
 
-        // When
+        // When - Fix title (content is already valid from load)
         viewModel.updateTitle("Valid title")
 
-        // Then
-        XCTAssertNil(viewModel.error, "Should clear error when title becomes valid")
+        // Then - Error should clear since both fields are now valid
+        XCTAssertNil(viewModel.error, "Should clear error when both fields become valid")
     }
 
     // MARK: - Error Handling Tests
@@ -317,6 +317,135 @@ final class NoteViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.id, originalId, "ID should not change")
         XCTAssertEqual(viewModel.created, originalCreated, "Created date should not change")
         XCTAssertEqual(viewModel.device, originalDevice, "Device should not change")
+    }
+
+    // MARK: - Unknown Frontmatter Fields Tests
+
+    func testPreservesUnknownFrontmatterFields() async {
+        // Given
+        var noteWithUnknownFields = testNote!
+        noteWithUnknownFields.unknownFrontmatterFields = [
+            "custom_field": AnyCodable(value: "custom_value"),
+            "another_field": AnyCodable(value: 42)
+        ]
+        _ = try? await repository.update(note: noteWithUnknownFields)
+
+        viewModel = NoteViewModel(repository: repository, noteId: testNote.id)
+
+        // When
+        await viewModel.load()
+        viewModel.updateTitle("Updated Title")
+        await viewModel.save()
+
+        // Then
+        let savedNote = try? await repository.read(id: testNote.id)
+        XCTAssertEqual(savedNote?.unknownFrontmatterFields.count, 2, "Should preserve unknown fields")
+    }
+
+    // MARK: - Create New Note Tests
+
+    func testSaveCreatesNewNoteWhenNotLoaded() async {
+        // Given
+        let newNoteId = UUID()
+        viewModel = NoteViewModel(repository: repository, noteId: newNoteId)
+        viewModel.updateTitle("New Note")
+        viewModel.updateContent("New note content")
+
+        // When
+        await viewModel.save()
+
+        // Then
+        let savedNote = try? await repository.read(id: newNoteId)
+        XCTAssertNotNil(savedNote, "Should create new note")
+        XCTAssertEqual(savedNote?.title, "New Note")
+        XCTAssertEqual(savedNote?.content, "New note content")
+        XCTAssertNil(viewModel.error, "Should have no error")
+    }
+
+    func testSaveUpdatesExistingNoteAfterLoad() async {
+        // Given
+        viewModel = NoteViewModel(repository: repository, noteId: testNote.id)
+        await viewModel.load()
+
+        // When - Update and save
+        viewModel.updateTitle("Updated Title")
+        await viewModel.save()
+
+        // Then - Should update, not create duplicate
+        let allNotes = try? await repository.list()
+        let notesWithSameId = allNotes?.filter { $0.id == testNote.id }
+        XCTAssertEqual(notesWithSameId?.count, 1, "Should update existing note, not create duplicate")
+    }
+
+    // MARK: - Error Clearing Tests
+
+    func testUpdateContentDoesNotClearRepositoryError() async {
+        // Given
+        let failingRepository = FailingRepository()
+        viewModel = NoteViewModel(repository: failingRepository, noteId: UUID())
+        viewModel.updateTitle("Title")
+        viewModel.updateContent("Content")
+        await viewModel.save()
+        XCTAssertNotNil(viewModel.error, "Should have repository error")
+
+        // When - Update content
+        viewModel.updateContent("New content")
+
+        // Then - Repository error should NOT be cleared
+        XCTAssertNotNil(viewModel.error, "Should not clear repository error")
+    }
+
+    func testUpdateTitleDoesNotClearRepositoryError() async {
+        // Given
+        let failingRepository = FailingRepository()
+        viewModel = NoteViewModel(repository: failingRepository, noteId: UUID())
+        viewModel.updateTitle("Title")
+        viewModel.updateContent("Content")
+        await viewModel.save()
+        XCTAssertNotNil(viewModel.error, "Should have repository error")
+
+        // When - Update title
+        viewModel.updateTitle("New title")
+
+        // Then - Repository error should NOT be cleared
+        XCTAssertNotNil(viewModel.error, "Should not clear repository error")
+    }
+
+    func testUpdateClearsValidationErrorOnlyWhenBothFieldsValid() async {
+        // Given
+        viewModel = NoteViewModel(repository: repository, noteId: testNote.id)
+        await viewModel.load()
+        viewModel.updateTitle("")
+        await viewModel.save()
+        XCTAssertNotNil(viewModel.error, "Should have validation error")
+
+        // When - Fix only content, not title
+        viewModel.updateContent("Valid content")
+
+        // Then - Error should NOT be cleared (title still empty)
+        XCTAssertNotNil(viewModel.error, "Should not clear error when only one field is valid")
+
+        // When - Fix title too
+        viewModel.updateTitle("Valid title")
+
+        // Then - Now error should be cleared
+        XCTAssertNil(viewModel.error, "Should clear error when both fields are valid")
+    }
+
+    // MARK: - Loading State Tests
+
+    func testLoadingStateIsClearedOnValidationFailure() async {
+        // Given
+        viewModel = NoteViewModel(repository: repository, noteId: testNote.id)
+        await viewModel.load()
+        viewModel.updateTitle("") // Make invalid
+
+        // When
+        await viewModel.save()
+
+        // Then
+        XCTAssertFalse(viewModel.isLoading, "Should clear loading state on validation failure")
+        XCTAssertNotNil(viewModel.error, "Should have validation error")
     }
 }
 

@@ -17,6 +17,7 @@ class NoteViewModel: ObservableObject {
     @Published var device: String = ""
     @Published var location: Location?
     @Published var backlinks: [UUID] = []
+    @Published var unknownFrontmatterFields: [String: AnyCodable] = [:]
     @Published var isLoading: Bool = false
     @Published var error: Error?
 
@@ -24,6 +25,7 @@ class NoteViewModel: ObservableObject {
 
     private let repository: NoteRepository
     private let noteId: UUID
+    private var isNewNote: Bool = true
 
     // MARK: - Initialization
 
@@ -57,6 +59,8 @@ class NoteViewModel: ObservableObject {
             self.device = note.device
             self.location = note.location
             self.backlinks = Array(note.backlinks)
+            self.unknownFrontmatterFields = note.unknownFrontmatterFields
+            self.isNewNote = false
 
             isLoading = false
         } catch {
@@ -67,20 +71,21 @@ class NoteViewModel: ObservableObject {
 
     /// Save current state to repository
     func save() async {
+        isLoading = true
+        error = nil
+
         // Validate fields
         do {
             try validate()
         } catch {
             self.error = error
+            isLoading = false
             return
         }
 
-        isLoading = true
-        error = nil
-
         do {
-            // Create updated note with current values
-            let updatedNote = Note(
+            // Create note with current values
+            let noteToSave = Note(
                 id: id,
                 created: created,
                 device: device,
@@ -88,10 +93,17 @@ class NoteViewModel: ObservableObject {
                 content: content,
                 title: title,
                 backlinks: Set(backlinks),
-                unknownFrontmatterFields: [:]
+                unknownFrontmatterFields: unknownFrontmatterFields
             )
 
-            _ = try await repository.update(note: updatedNote)
+            // Call create() for new notes, update() for existing
+            if isNewNote {
+                _ = try await repository.create(note: noteToSave)
+                isNewNote = false
+            } else {
+                _ = try await repository.update(note: noteToSave)
+            }
+
             isLoading = false
         } catch {
             self.error = error
@@ -103,25 +115,40 @@ class NoteViewModel: ObservableObject {
     /// - Parameter content: New markdown content
     func updateContent(_ content: String) {
         self.content = content
-
-        // Clear error if content is now valid
-        if !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            error = nil
-        }
+        clearValidationErrorIfValid()
     }
 
     /// Update note title
     /// - Parameter title: New title
     func updateTitle(_ title: String) {
         self.title = title
-
-        // Clear error if title is now valid
-        if !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            error = nil
-        }
+        clearValidationErrorIfValid()
     }
 
     // MARK: - Private Methods
+
+    /// Clear error only if it's a validation error and both fields are valid
+    private func clearValidationErrorIfValid() {
+        // Only clear validation errors, not repository or other errors
+        guard let viewModelError = error as? NoteViewModelError else {
+            return
+        }
+
+        // Check if it's a validation error
+        switch viewModelError {
+        case .emptyTitle, .emptyContent:
+            // Check if both fields are now valid
+            let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+            let trimmedContent = content.trimmingCharacters(in: .whitespacesAndNewlines)
+
+            if !trimmedTitle.isEmpty && !trimmedContent.isEmpty {
+                error = nil
+            }
+        case .noteNotFound:
+            // Don't clear noteNotFound error on field updates
+            break
+        }
+    }
 
     /// Validate note fields
     /// - Throws: NoteViewModelError if validation fails
