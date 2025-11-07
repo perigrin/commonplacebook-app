@@ -126,6 +126,11 @@ class NoteListViewModel: ObservableObject {
         await loadNotes()
     }
 
+    /// Dismiss current error
+    func dismissError() async {
+        error = nil
+    }
+
     // MARK: - Private Methods
 
     /// Start a loading operation

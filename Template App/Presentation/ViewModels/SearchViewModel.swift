@@ -18,7 +18,7 @@ class SearchViewModel: ObservableObject {
     // MARK: - Private Properties
 
     private let searchEngine: VectorSearchEngineProtocol
-    private let repository: NoteRepository
+    let repository: NoteRepository // Internal access for SearchResultsListView
     private var cancellables = Set<AnyCancellable>()
     private let debounceInterval: TimeInterval = 0.5 // 500ms
     private var currentSearchTask: Task<Void, Never>?
