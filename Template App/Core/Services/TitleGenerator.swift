@@ -50,9 +50,9 @@ class TitleGenerator {
         let tagger = NLTagger(tagSchemes: [.lexicalClass, .nameType])
         tagger.string = content
 
-        // Extract important words (nouns, names, verbs)
+        // Extract important words (nouns, names, verbs) - use Set for O(1) duplicate checking
         var importantWords: [String] = []
-        var wordCount = 0
+        var seenWords = Set<String>()
         let maxWords = 10 // Aim for ~5-10 words
 
         tagger.enumerateTags(in: content.startIndex..<content.endIndex,
@@ -61,7 +61,7 @@ class TitleGenerator {
                             options: [.omitWhitespace, .omitPunctuation]) { tag, tokenRange in
 
             // Stop after collecting enough words
-            guard wordCount < maxWords else { return false }
+            guard importantWords.count < maxWords else { return false }
 
             let word = String(content[tokenRange])
 
@@ -69,8 +69,9 @@ class TitleGenerator {
             if let tag = tag {
                 switch tag {
                 case .noun, .verb, .adjective, .adverb:
-                    importantWords.append(word)
-                    wordCount += 1
+                    if seenWords.insert(word).inserted {
+                        importantWords.append(word)
+                    }
                 default:
                     break
                 }
@@ -79,29 +80,36 @@ class TitleGenerator {
             return true
         }
 
-        // Also check for named entities (people, places, organizations)
+        // Reset counter for second pass - check for named entities (people, places, organizations)
+        let remainingSlots = maxWords - importantWords.count
+        guard remainingSlots > 0 else {
+            // Already have enough words, return what we have
+            return importantWords.joined(separator: " ")
+        }
+
+        var entitiesAdded = 0
         tagger.enumerateTags(in: content.startIndex..<content.endIndex,
                             unit: .word,
                             scheme: .nameType,
                             options: [.omitWhitespace, .omitPunctuation]) { tag, tokenRange in
 
-            guard wordCount < maxWords else { return false }
+            guard entitiesAdded < remainingSlots else { return false }
 
             if tag != nil {
                 let word = String(content[tokenRange])
-                // Avoid duplicates
-                if !importantWords.contains(word) {
+                // Avoid duplicates using Set
+                if seenWords.insert(word).inserted {
                     importantWords.append(word)
-                    wordCount += 1
+                    entitiesAdded += 1
                 }
             }
 
             return true
         }
 
-        // If we found important words, join them
+        // If we found important words, join them (use maxWords for consistency)
         if !importantWords.isEmpty {
-            return importantWords.prefix(8).joined(separator: " ")
+            return importantWords.prefix(maxWords).joined(separator: " ")
         }
 
         return nil
@@ -131,8 +139,8 @@ class TitleGenerator {
 
     /// Strips markdown header symbols from the beginning of text
     private func stripMarkdownHeaders(from text: String) -> String {
-        // Remove leading # symbols and spaces
-        let pattern = "^#+\\s?"
+        // Remove leading # symbols and spaces (require space after # for valid markdown)
+        let pattern = "^#+\\s+"
         guard let regex = try? NSRegularExpression(pattern: pattern) else {
             return text
         }
@@ -145,15 +153,9 @@ class TitleGenerator {
         return result.trimmingCharacters(in: .whitespaces)
     }
 
-    /// Safely truncates a string to max length without splitting Unicode characters
+    /// Safely truncates a string to max length using shared extension
     private func unicodeSafeTruncate(_ string: String, maxLength: Int) -> String {
-        guard string.count > maxLength else { return string }
-
-        let endIndex = string.index(string.startIndex,
-                                   offsetBy: maxLength,
-                                   limitedBy: string.endIndex) ?? string.endIndex
-
-        return String(string[..<endIndex])
+        return string.truncated(to: maxLength)
     }
 
     /// Finalizes the title by cleaning whitespace and enforcing max length

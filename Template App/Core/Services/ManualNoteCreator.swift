@@ -76,19 +76,11 @@ class ManualNoteCreator {
         // Check if title was provided and is not empty/whitespace
         if let title = title?.trimmingCharacters(in: .whitespacesAndNewlines),
            !title.isEmpty {
-            return unicodeSafeTruncate(title, maxLength: 100)
+            return title.truncated(to: 100)
         }
 
         // Auto-generate from content
         return extractTitleFromContent(content)
-    }
-
-    /// Truncate string safely for Unicode (won't split emojis or multi-byte characters)
-    private func unicodeSafeTruncate(_ string: String, maxLength: Int) -> String {
-        guard string.count > maxLength else { return string }
-
-        let endIndex = string.index(string.startIndex, offsetBy: maxLength, limitedBy: string.endIndex) ?? string.endIndex
-        return String(string[..<endIndex])
     }
 
     /// Extract title from content using TitleGenerator

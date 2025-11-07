@@ -5,6 +5,7 @@ import XCTest
 import NaturalLanguage
 @testable import Template_App
 
+@MainActor
 final class TitleGeneratorTests: XCTestCase {
     var generator: TitleGenerator!
 
@@ -101,9 +102,8 @@ final class TitleGeneratorTests: XCTestCase {
         // WHEN generating title
         let title = generator.generateTitle(from: content)
 
-        // THEN returns fallback title
-        XCTAssertFalse(title.isEmpty)
-        XCTAssertTrue(title.contains("Note"))
+        // THEN returns exact fallback title
+        XCTAssertEqual(title, "Note", "Should return exact fallback title for empty content")
     }
 
     func testFallbackForWhitespaceOnlyContent() throws {
@@ -113,9 +113,8 @@ final class TitleGeneratorTests: XCTestCase {
         // WHEN generating title
         let title = generator.generateTitle(from: content)
 
-        // THEN returns fallback title
-        XCTAssertFalse(title.isEmpty)
-        XCTAssertTrue(title.contains("Note"))
+        // THEN returns exact fallback title
+        XCTAssertEqual(title, "Note", "Should return exact fallback title for whitespace-only content")
     }
 
     // MARK: - Title Length Tests
