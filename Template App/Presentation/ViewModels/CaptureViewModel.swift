@@ -1,0 +1,191 @@
+// ABOUTME: View model coordinating speech recognition, audio monitoring, and note creation
+// ABOUTME: Manages recording lifecycle and integrates metadata collection with repository
+
+import Foundation
+import Combine
+
+/// View model for note capture via speech recognition
+@MainActor
+class CaptureViewModel: ObservableObject {
+
+    // MARK: - Published Properties
+
+    @Published private(set) var isRecording: Bool = false
+    @Published private(set) var transcription: String = ""
+    @Published private(set) var audioLevel: Float = 0.0
+    @Published var error: Error?
+
+    // MARK: - Private Properties
+
+    private let speechService: SpeechRecognitionService
+    private let audioMonitor: AudioLevelMonitor
+    private let metadataCollector: MetadataCollector
+    private let repository: NoteRepository
+    private var cancellables = Set<AnyCancellable>()
+
+    // MARK: - Initialization
+
+    init(speechService: SpeechRecognitionService? = nil,
+         audioMonitor: AudioLevelMonitor? = nil,
+         metadataCollector: MetadataCollector? = nil,
+         repository: NoteRepository) {
+        self.speechService = speechService ?? SpeechRecognitionService()
+        self.audioMonitor = audioMonitor ?? AudioLevelMonitor()
+        self.metadataCollector = metadataCollector ?? MetadataCollector()
+        self.repository = repository
+
+        setupBindings()
+    }
+
+    // MARK: - Setup
+
+    private func setupBindings() {
+        // Bind transcription from speech service
+        speechService.$transcription
+            .assign(to: &$transcription)
+
+        // Bind audio level from monitor
+        audioMonitor.$audioLevel
+            .assign(to: &$audioLevel)
+    }
+
+    // MARK: - Recording Control
+
+    /// Start recording with speech recognition and audio monitoring
+    func startRecording() async {
+        error = nil
+
+        // Request permission
+        let permissionGranted = await speechService.requestPermission()
+        guard permissionGranted else {
+            error = CaptureViewModelError.permissionDenied
+            return
+        }
+
+        // Start speech recognition
+        do {
+            try await speechService.startRecording()
+        } catch {
+            self.error = error
+            return
+        }
+
+        // Start audio monitoring
+        do {
+            try audioMonitor.startMonitoring()
+        } catch {
+            self.error = error
+            // Stop speech if audio monitor fails
+            _ = await speechService.stopRecording()
+            return
+        }
+
+        isRecording = true
+    }
+
+    /// Stop recording and preserve transcription for saving
+    func stopRecording() async {
+        guard isRecording else { return }
+
+        // Stop audio monitoring
+        audioMonitor.stopMonitoring()
+
+        // Stop speech recognition
+        let finalTranscription = await speechService.stopRecording()
+        transcription = finalTranscription
+
+        isRecording = false
+    }
+
+    /// Cancel recording and discard transcription
+    func cancelRecording() async {
+        guard isRecording else { return }
+
+        // Stop audio monitoring
+        audioMonitor.stopMonitoring()
+
+        // Stop speech recognition
+        _ = await speechService.stopRecording()
+
+        // Clear transcription
+        transcription = ""
+
+        isRecording = false
+    }
+
+    /// Save note with transcription and metadata
+    /// - Returns: Created note, or nil if transcription is empty
+    func saveNote() async -> Note? {
+        // Validate transcription
+        let content = transcription.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !content.isEmpty else {
+            return nil
+        }
+
+        // Collect metadata
+        let device = await metadataCollector.getCurrentDevice()
+        let timestamp = await metadataCollector.generateTimestamp()
+        let location = await metadataCollector.getCurrentLocation()
+
+        // Extract title from first line or use first few words
+        let title = extractTitle(from: content)
+
+        // Create note
+        let note = Note(
+            id: UUID(),
+            created: timestamp,
+            device: device,
+            location: location,
+            content: content,
+            title: title,
+            backlinks: [],
+            unknownFrontmatterFields: [:]
+        )
+
+        // Save to repository
+        do {
+            let savedNote = try await repository.create(note: note)
+
+            // Clear transcription after successful save
+            transcription = ""
+
+            return savedNote
+        } catch {
+            self.error = error
+            return nil
+        }
+    }
+
+    // MARK: - Private Helpers
+
+    private func extractTitle(from content: String) -> String {
+        // Try to get first line as title
+        if let firstLine = content.components(separatedBy: .newlines).first,
+           !firstLine.isEmpty {
+            // Remove markdown heading markers
+            let cleaned = firstLine
+                .replacingOccurrences(of: "^#+\\s*", with: "", options: .regularExpression)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+
+            if !cleaned.isEmpty {
+                return String(cleaned.prefix(100)) // Limit title length
+            }
+        }
+
+        // Fallback: use first 50 characters
+        let preview = content.prefix(50)
+        return String(preview)
+    }
+}
+
+/// Errors specific to capture view model
+enum CaptureViewModelError: LocalizedError {
+    case permissionDenied
+
+    var errorDescription: String? {
+        switch self {
+        case .permissionDenied:
+            return "Microphone and speech recognition permissions are required"
+        }
+    }
+}
