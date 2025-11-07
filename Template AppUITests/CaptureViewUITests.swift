@@ -285,7 +285,7 @@ final class CaptureViewUITests: XCTestCase {
         contentEditor.typeText("This is my test note content")
 
         // THEN text appears in editor
-        XCTAssertTrue(contentEditor.value as? String == "This is my test note content")
+        XCTAssertEqual(contentEditor.value as? String, "This is my test note content")
     }
 
     func testSaveButtonEnabledWithContent() throws {

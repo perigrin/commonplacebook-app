@@ -12,6 +12,15 @@ class ManualNoteCreator {
     private let repository: NoteRepository
     private let metadataCollector: MetadataCollector
 
+    // MARK: - Static Properties
+
+    private static let timestampFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter
+    }()
+
     // MARK: - Initialization
 
     init(repository: NoteRepository, metadataCollector: MetadataCollector) {
@@ -65,11 +74,19 @@ class ManualNoteCreator {
         // Check if title was provided and is not empty/whitespace
         if let title = title?.trimmingCharacters(in: .whitespacesAndNewlines),
            !title.isEmpty {
-            return String(title.prefix(100)) // Limit length
+            return unicodeSafeTruncate(title, maxLength: 100)
         }
 
         // Auto-generate from content
         return extractTitleFromContent(content)
+    }
+
+    /// Truncate string safely for Unicode (won't split emojis or multi-byte characters)
+    private func unicodeSafeTruncate(_ string: String, maxLength: Int) -> String {
+        guard string.count > maxLength else { return string }
+
+        let endIndex = string.index(string.startIndex, offsetBy: maxLength, limitedBy: string.endIndex) ?? string.endIndex
+        return String(string[..<endIndex])
     }
 
     /// Extract title from content (first line or timestamp)
@@ -77,13 +94,13 @@ class ManualNoteCreator {
         // Get first line
         if let firstLine = content.components(separatedBy: .newlines).first,
            !firstLine.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            // Remove markdown heading markers
+            // Remove markdown heading markers (with or without spaces)
             let cleaned = firstLine
-                .replacingOccurrences(of: "^#+\\s*", with: "", options: .regularExpression)
+                .replacingOccurrences(of: "^#+\\s?", with: "", options: .regularExpression)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
 
             if !cleaned.isEmpty {
-                return String(cleaned.prefix(100)) // Limit title length
+                return unicodeSafeTruncate(cleaned, maxLength: 100)
             }
         }
 
@@ -93,10 +110,7 @@ class ManualNoteCreator {
 
     /// Generate fallback title based on timestamp
     private func generateTimestampBasedTitle() -> String {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .short
-        return "Note - \(formatter.string(from: Date()))"
+        return "Note - \(Self.timestampFormatter.string(from: Date()))"
     }
 }
 

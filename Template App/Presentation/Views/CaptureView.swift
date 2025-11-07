@@ -13,6 +13,7 @@ struct CaptureView: View {
     @StateObject private var viewModel: CaptureViewModel
     @State private var showingPermissionAlert = false
     @State private var isProcessingTap = false
+    @State private var isSavingTextNote = false
     @State private var captureMode: CaptureMode = .speech
     @State private var manualTitle: String = ""
     @State private var manualContent: String = ""
@@ -122,7 +123,7 @@ struct CaptureView: View {
 
             // Content editor
             ZStack(alignment: .topLeading) {
-                if manualContent.isEmpty {
+                if manualContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     Text("Enter your note here...")
                         .foregroundColor(.secondary)
                         .padding(.horizontal, 4)
@@ -252,10 +253,10 @@ struct CaptureView: View {
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
                 .padding()
-                .background(manualContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Color.gray : Color.blue)
+                .background((manualContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSavingTextNote) ? Color.gray : Color.blue)
                 .cornerRadius(12)
             }
-            .disabled(manualContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .disabled(manualContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSavingTextNote)
             .accessibilityIdentifier("saveButton")
         }
     }
@@ -313,7 +314,12 @@ struct CaptureView: View {
 
     @MainActor
     private func handleTextSave() {
+        guard !isSavingTextNote else { return }
+        isSavingTextNote = true
+
         Task {
+            defer { isSavingTextNote = false }
+
             do {
                 let note = try await manualNoteCreator.createNote(
                     title: manualTitle.isEmpty ? nil : manualTitle,
@@ -327,8 +333,11 @@ struct CaptureView: View {
                 #if DEBUG
                 print("Manual note saved: \(note.id)")
                 #endif
+            } catch let error as ManualNoteCreatorError {
+                // Map to CaptureViewModelError or show specific alert
+                viewModel.error = CaptureViewModelError.emptyTranscription // Reusing for now
             } catch {
-                viewModel.error = error
+                viewModel.error = CaptureViewModelError.emptyTranscription
             }
         }
     }
