@@ -11,8 +11,8 @@ struct Note: Codable, Equatable, Hashable, Identifiable {
     let location: Location?
     var content: String
     var title: String
-    var backlinks: [UUID]
-    var unknownFrontmatterFields: [String: String]  // Preserve unknown YAML fields
+    var backlinks: Set<UUID>  // Set for O(1) add/remove/contains
+    var unknownFrontmatterFields: [String: AnyCodable]  // Preserve unknown YAML fields with type information
 
     /// Check if note is valid
     var isValid: Bool {
@@ -36,8 +36,8 @@ struct Note: Codable, Equatable, Hashable, Identifiable {
         location: Location?,
         content: String,
         title: String,
-        backlinks: [UUID],
-        unknownFrontmatterFields: [String: String] = [:]
+        backlinks: Set<UUID> = [],
+        unknownFrontmatterFields: [String: AnyCodable] = [:]
     ) {
         self.id = id
         self.created = created
@@ -52,15 +52,13 @@ struct Note: Codable, Equatable, Hashable, Identifiable {
     /// Add a backlink to this note
     /// - Parameter noteId: The ID of the note that links to this note
     mutating func addBacklink(_ noteId: UUID) {
-        if !backlinks.contains(noteId) {
-            backlinks.append(noteId)
-        }
+        backlinks.insert(noteId)  // Set automatically handles duplicates, O(1)
     }
 
     /// Remove a backlink from this note
     /// - Parameter noteId: The ID of the note to remove
     mutating func removeBacklink(_ noteId: UUID) {
-        backlinks.removeAll { $0 == noteId }
+        backlinks.remove(noteId)  // O(1) removal with Set
     }
 
     /// Hash for Hashable conformance

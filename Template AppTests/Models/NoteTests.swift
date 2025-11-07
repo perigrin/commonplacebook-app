@@ -239,6 +239,7 @@ struct NoteTests {
         // Create two identical notes
         let id = UUIDv7.generate()
         let created = Date()
+        let sharedBacklink = UUID()
         let note1 = Note(
             id: id,
             created: created,
@@ -246,8 +247,8 @@ struct NoteTests {
             location: Location(latitude: 37.7749, longitude: -122.4194, accuracy: 5.0),
             content: "Test content",
             title: "Test",
-            backlinks: [UUID()],
-            unknownFrontmatterFields: ["custom": "value"]
+            backlinks: [sharedBacklink],
+            unknownFrontmatterFields: ["custom": AnyCodable("value")]
         )
 
         let note2 = Note(
@@ -257,8 +258,8 @@ struct NoteTests {
             location: Location(latitude: 37.7749, longitude: -122.4194, accuracy: 5.0),
             content: "Test content",
             title: "Test",
-            backlinks: note1.backlinks,
-            unknownFrontmatterFields: ["custom": "value"]
+            backlinks: [sharedBacklink],
+            unknownFrontmatterFields: ["custom": AnyCodable("value")]
         )
 
         // Verify Hashable contract: equal objects must have equal hash values

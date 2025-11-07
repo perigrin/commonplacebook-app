@@ -43,7 +43,7 @@ class NoteFileFormatter {
 
         // Unknown frontmatter fields (preserve them)
         for (key, value) in note.unknownFrontmatterFields.sorted(by: { $0.key < $1.key }) {
-            yaml.append("\(key): \(value)")
+            yaml.append("\(key): \(serializeValue(value.value))")
         }
 
         // Build final markdown
@@ -92,9 +92,9 @@ class NoteFileFormatter {
         }
 
         // Extract optional backlinks
-        var backlinks: [UUID] = []
+        var backlinks: Set<UUID> = []
         if let backlinksArray = metadata["backlinks"] as? [String] {
-            backlinks = backlinksArray.compactMap { UUID(uuidString: $0) }
+            backlinks = Set(backlinksArray.compactMap { UUID(uuidString: $0) })
         }
 
         // Extract title from content (first # line or use first line)
@@ -102,15 +102,10 @@ class NoteFileFormatter {
 
         // Capture unknown fields (fields that aren't in our model)
         let knownKeys: Set<String> = ["id", "created", "device", "location", "backlinks"]
-        var unknownFields: [String: String] = [:]
+        var unknownFields: [String: AnyCodable] = [:]
         for (key, value) in metadata {
-            if !knownKeys.contains(key), let stringValue = value as? String {
-                unknownFields[key] = stringValue
-            } else if !knownKeys.contains(key), let intValue = value as? Int {
-                unknownFields[key] = String(intValue)
-            } else if !knownKeys.contains(key) {
-                // Convert other types to string
-                unknownFields[key] = String(describing: value)
+            if !knownKeys.contains(key) {
+                unknownFields[key] = AnyCodable(value)
             }
         }
 
@@ -244,6 +239,29 @@ class NoteFileFormatter {
         }
 
         return result
+    }
+
+    /// Serialize an Any value to YAML-compatible string
+    private func serializeValue(_ value: Any) -> String {
+        switch value {
+        case let string as String:
+            // Quote strings that contain special characters
+            if string.contains(":") || string.contains("#") || string.contains("-") {
+                return "\"\(string)\""
+            }
+            return string
+        case let int as Int:
+            return String(int)
+        case let double as Double:
+            return String(double)
+        case let bool as Bool:
+            return bool ? "true" : "false"
+        case let array as [Any]:
+            // Simple array serialization - for complex cases, Yams should be used
+            return "[\(array.map { serializeValue($0) }.joined(separator: ", "))]"
+        default:
+            return String(describing: value)
+        }
     }
 
     /// Extract title from markdown content
