@@ -77,6 +77,24 @@ final class AudioLevelMonitorTests: XCTestCase {
         }
     }
 
+    func testStartMonitoringPreparesAudioEngine() throws {
+        // GIVEN a stopped monitor
+        // WHEN starting monitoring
+        try monitor.startMonitoring()
+
+        // THEN audio engine is prepared
+        XCTAssertTrue(mockAudioEngine.prepareCalled)
+    }
+
+    func testStartMonitoringStartsAudioEngine() throws {
+        // GIVEN a stopped monitor
+        // WHEN starting monitoring
+        try monitor.startMonitoring()
+
+        // THEN audio engine is started
+        XCTAssertTrue(mockAudioEngine.startCalled)
+    }
+
     // MARK: - Stop Monitoring Tests
 
     func testStopMonitoringSetsIsMonitoringFalse() throws {
@@ -112,6 +130,18 @@ final class AudioLevelMonitorTests: XCTestCase {
 
         // THEN it doesn't crash
         XCTAssertFalse(monitor.isMonitoring)
+    }
+
+    func testStopMonitoringStopsAudioEngine() throws {
+        // GIVEN monitoring is active
+        try monitor.startMonitoring()
+        XCTAssertTrue(monitor.isMonitoring)
+
+        // WHEN stopping monitoring
+        monitor.stopMonitoring()
+
+        // THEN audio engine is stopped
+        XCTAssertTrue(mockAudioEngine.stopCalled)
     }
 
     // MARK: - Audio Level Publisher Tests
@@ -264,17 +294,5 @@ class MockAudioEngineForMonitor: AudioEngineProtocol {
 
         let audioTime = AVAudioTime(hostTime: mach_absolute_time())
         tapBlock(buffer, audioTime)
-    }
-}
-
-/// Errors that can occur during audio level monitoring
-enum AudioLevelMonitorError: LocalizedError {
-    case alreadyMonitoring
-
-    var errorDescription: String? {
-        switch self {
-        case .alreadyMonitoring:
-            return "Audio level monitoring is already active"
-        }
     }
 }

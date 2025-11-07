@@ -17,7 +17,7 @@ class AudioLevelMonitor: ObservableObject {
     // MARK: - Private Properties
 
     private let audioEngine: AudioEngineProtocol
-    private var levelUpdateTimer: Timer?
+    private let audioLevelQueue = DispatchQueue(label: "audio.level.processing", qos: .userInteractive)
 
     // MARK: - Initialization
 
@@ -34,14 +34,26 @@ class AudioLevelMonitor: ObservableObject {
             throw AudioLevelMonitorError.alreadyMonitoring
         }
 
+        // Prepare and start the audio engine
+        audioEngine.prepare()
+        try audioEngine.start()
+
         let inputNode = audioEngine.inputNode
         let recordingFormat = inputNode.outputFormat(forBus: 0)
 
         // Install tap to monitor audio levels
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { [weak self] buffer, _ in
-            Task { @MainActor [weak self] in
+            guard let self = self else { return }
+
+            // Process on background queue to avoid blocking audio thread
+            self.audioLevelQueue.async { [weak self] in
                 guard let self = self else { return }
-                self.processAudioBuffer(buffer)
+                let level = self.calculateAudioLevel(from: buffer)
+
+                Task { @MainActor [weak self] in
+                    guard let self = self else { return }
+                    self.audioLevel = level
+                }
             }
         }
 
@@ -53,16 +65,16 @@ class AudioLevelMonitor: ObservableObject {
         guard isMonitoring else { return }
 
         audioEngine.inputNode.removeTap(onBus: 0)
+        audioEngine.stop()
         isMonitoring = false
         audioLevel = 0.0
     }
 
     // MARK: - Audio Processing
 
-    private func processAudioBuffer(_ buffer: AVAudioPCMBuffer) {
+    private func calculateAudioLevel(from buffer: AVAudioPCMBuffer) -> Float {
         guard let channelData = buffer.floatChannelData else {
-            audioLevel = 0.0
-            return
+            return 0.0
         }
 
         let channelDataValue = channelData.pointee
@@ -82,7 +94,7 @@ class AudioLevelMonitor: ObservableObject {
         let db = 20 * log10(max(rms, 0.00001)) // Avoid log(0)
         let normalized = max(0.0, min(1.0, (db + 160) / 160))
 
-        audioLevel = normalized
+        return normalized
     }
 }
 
