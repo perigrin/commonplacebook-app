@@ -164,7 +164,7 @@ actor FailingNoteRepository: NoteRepository {
         throw RepositoryError.storageError("Simulated failure")
     }
 
-    func read(id: UUID) async throws -> Note {
+    func read(id: UUID) async throws -> Note? {
         throw RepositoryError.notFound
     }
 

@@ -68,7 +68,7 @@ struct NoteListView: View {
                 .font(.title2)
                 .fontWeight(.semibold)
 
-            Text("Pull down to refresh or create a new note")
+            Text("Pull down to refresh")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)

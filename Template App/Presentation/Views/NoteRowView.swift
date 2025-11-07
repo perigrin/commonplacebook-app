@@ -4,6 +4,16 @@
 import SwiftUI
 
 struct NoteRowView: View {
+    private enum Constants {
+        static let previewCharacterLimit = 100
+    }
+
+    private static let relativeDateFormatter: RelativeDateTimeFormatter = {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .full
+        return formatter
+    }()
+
     let note: Note
 
     var body: some View {
@@ -35,18 +45,16 @@ struct NoteRowView: View {
             .replacingOccurrences(of: "# \(note.title)", with: "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
-        if cleaned.count <= 100 {
+        if cleaned.count <= Constants.previewCharacterLimit {
             return cleaned
         }
 
-        let truncated = String(cleaned.prefix(100))
+        let truncated = String(cleaned.prefix(Constants.previewCharacterLimit))
         return truncated + "..."
     }
 
     private var relativeDate: String {
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .full
-        return formatter.localizedString(for: note.created, relativeTo: Date())
+        return Self.relativeDateFormatter.localizedString(for: note.created, relativeTo: Date())
     }
 }
 
