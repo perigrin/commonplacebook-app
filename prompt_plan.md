@@ -354,7 +354,7 @@ Use CoreLocation framework. Handle all permission states gracefully.
 
 ---
 
-#### Step 6: Basic Note View Model
+#### Step 6: Basic Note View Model ✅
 
 **Goal**: Create ViewModel for displaying and editing a single note
 
