@@ -215,4 +215,155 @@ final class CaptureViewUITests: XCTestCase {
         let alert = app.alerts.element
         XCTAssertTrue(alert.waitForExistence(timeout: 2))
     }
+
+    // MARK: - Mode Toggle Tests
+
+    func testModeToggleExists() throws {
+        // Navigate to capture view
+        let captureTab = app.buttons["Capture"]
+        XCTAssertTrue(captureTab.waitForExistence(timeout: 2))
+        captureTab.tap()
+
+        // THEN mode toggle exists
+        let toggle = app.segmentedControls["modeToggle"]
+        XCTAssertTrue(toggle.exists)
+    }
+
+    func testSwitchToTextModeHidesMicrophone() throws {
+        // Navigate to capture view
+        app.buttons["Capture"].tap()
+
+        // GIVEN speech mode is active
+        let micButton = app.buttons["microphoneButton"]
+        XCTAssertTrue(micButton.exists)
+
+        // WHEN switching to text mode
+        let toggle = app.segmentedControls["modeToggle"]
+        toggle.buttons["Text"].tap()
+
+        // THEN microphone button is hidden
+        XCTAssertFalse(micButton.exists)
+    }
+
+    func testSwitchToTextModeShowsTextEditor() throws {
+        // Navigate to capture view
+        app.buttons["Capture"].tap()
+
+        // WHEN switching to text mode
+        let toggle = app.segmentedControls["modeToggle"]
+        toggle.buttons["Text"].tap()
+
+        // THEN text editor appears
+        let contentEditor = app.textViews["contentEditor"]
+        XCTAssertTrue(contentEditor.exists)
+    }
+
+    func testSwitchToTextModeShowsTitleField() throws {
+        // Navigate to capture view
+        app.buttons["Capture"].tap()
+
+        // WHEN switching to text mode
+        let toggle = app.segmentedControls["modeToggle"]
+        toggle.buttons["Text"].tap()
+
+        // THEN title field appears
+        let titleField = app.textFields["titleField"]
+        XCTAssertTrue(titleField.exists)
+    }
+
+    func testTextEditorAcceptsInput() throws {
+        // Navigate to capture view
+        app.buttons["Capture"].tap()
+
+        // Switch to text mode
+        let toggle = app.segmentedControls["modeToggle"]
+        toggle.buttons["Text"].tap()
+
+        // WHEN typing in text editor
+        let contentEditor = app.textViews["contentEditor"]
+        contentEditor.tap()
+        contentEditor.typeText("This is my test note content")
+
+        // THEN text appears in editor
+        XCTAssertTrue(contentEditor.value as? String == "This is my test note content")
+    }
+
+    func testSaveButtonEnabledWithContent() throws {
+        // Navigate to capture view
+        app.buttons["Capture"].tap()
+
+        // Switch to text mode
+        let toggle = app.segmentedControls["modeToggle"]
+        toggle.buttons["Text"].tap()
+
+        // WHEN entering content
+        let contentEditor = app.textViews["contentEditor"]
+        contentEditor.tap()
+        contentEditor.typeText("Test content")
+
+        // THEN save button is enabled
+        let saveButton = app.buttons["saveButton"]
+        XCTAssertTrue(saveButton.isEnabled)
+    }
+
+    func testSaveButtonDisabledWithoutContent() throws {
+        // Navigate to capture view
+        app.buttons["Capture"].tap()
+
+        // Switch to text mode
+        let toggle = app.segmentedControls["modeToggle"]
+        toggle.buttons["Text"].tap()
+
+        // GIVEN no content entered
+        // THEN save button is disabled
+        let saveButton = app.buttons["saveButton"]
+        XCTAssertFalse(saveButton.isEnabled)
+    }
+
+    func testSaveWithTitleCreatesNote() throws {
+        // Navigate to capture view
+        app.buttons["Capture"].tap()
+
+        // Switch to text mode
+        let toggle = app.segmentedControls["modeToggle"]
+        toggle.buttons["Text"].tap()
+
+        // Enter title and content
+        let titleField = app.textFields["titleField"]
+        titleField.tap()
+        titleField.typeText("My Note")
+
+        let contentEditor = app.textViews["contentEditor"]
+        contentEditor.tap()
+        contentEditor.typeText("Note content here")
+
+        // WHEN tapping save
+        let saveButton = app.buttons["saveButton"]
+        saveButton.tap()
+
+        // THEN fields are cleared (indicating note was created)
+        XCTAssertEqual(titleField.value as? String, "")
+        XCTAssertEqual(contentEditor.value as? String, "")
+    }
+
+    func testSaveWithoutTitleCreatesNote() throws {
+        // Navigate to capture view
+        app.buttons["Capture"].tap()
+
+        // Switch to text mode
+        let toggle = app.segmentedControls["modeToggle"]
+        toggle.buttons["Text"].tap()
+
+        // Enter only content (no title)
+        let contentEditor = app.textViews["contentEditor"]
+        contentEditor.tap()
+        contentEditor.typeText("First line is title\nSecond line content")
+
+        // WHEN tapping save
+        let saveButton = app.buttons["saveButton"]
+        saveButton.tap()
+
+        // THEN note is created (fields cleared)
+        XCTAssertEqual(contentEditor.value as? String, "")
+    }
 }
