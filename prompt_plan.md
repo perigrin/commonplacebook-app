@@ -133,7 +133,7 @@ Use Swift and follow iOS best practices. No Core Data yet - pure Swift structs/c
 
 ---
 
-#### Step 2: Markdown File Format Handler
+#### Step 2: Markdown File Format Handler ✅ COMPLETED
 
 **Goal**: Parse and serialize notes to/from markdown files with YAML frontmatter
 
