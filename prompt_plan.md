@@ -470,7 +470,7 @@ Use @MainActor. Inject repository for testability.
 
 ---
 
-#### Step 8: Basic SwiftUI Views (Read-Only)
+#### Step 8: Basic SwiftUI Views (Read-Only) ✅ COMPLETED
 
 **Goal**: Create minimal UI to display notes (no editing yet)
 
@@ -531,7 +531,7 @@ Use SwiftUI. Keep it simple and readable. Follow iOS HIG.
 
 ### PHASE 2: NOTE CAPTURE
 
-#### Step 9: Speech Recognition Service
+#### Step 9: Speech Recognition Service ✅ COMPLETED
 
 **Goal**: Integrate Apple Speech framework for transcription
 
