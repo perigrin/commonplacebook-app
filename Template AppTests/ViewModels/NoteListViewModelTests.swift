@@ -319,6 +319,84 @@ final class NoteListViewModelTests: XCTestCase {
         XCTAssertNil(viewModel.error, "Should clear error after successful operation")
     }
 
+    // MARK: - Validation Tests
+
+    func testCreateNoteRejectsEmptyTitle() async {
+        // Given
+        viewModel = NoteListViewModel(repository: repository)
+        await viewModel.loadNotes()
+
+        // When
+        let note = await viewModel.createNote(title: "", content: "Valid content")
+
+        // Then
+        XCTAssertNil(note, "Should return nil for empty title")
+        XCTAssertNotNil(viewModel.error, "Should set error")
+    }
+
+    func testCreateNoteRejectsWhitespaceOnlyTitle() async {
+        // Given
+        viewModel = NoteListViewModel(repository: repository)
+        await viewModel.loadNotes()
+
+        // When
+        let note = await viewModel.createNote(title: "   ", content: "Valid content")
+
+        // Then
+        XCTAssertNil(note, "Should return nil for whitespace-only title")
+        XCTAssertNotNil(viewModel.error, "Should set error")
+    }
+
+    func testCreateNoteRejectsEmptyContent() async {
+        // Given
+        viewModel = NoteListViewModel(repository: repository)
+        await viewModel.loadNotes()
+
+        // When
+        let note = await viewModel.createNote(title: "Valid title", content: "")
+
+        // Then
+        XCTAssertNil(note, "Should return nil for empty content")
+        XCTAssertNotNil(viewModel.error, "Should set error")
+    }
+
+    func testCreateNoteRejectsWhitespaceOnlyContent() async {
+        // Given
+        viewModel = NoteListViewModel(repository: repository)
+        await viewModel.loadNotes()
+
+        // When
+        let note = await viewModel.createNote(title: "Valid title", content: "  \n  ")
+
+        // Then
+        XCTAssertNil(note, "Should return nil for whitespace-only content")
+        XCTAssertNotNil(viewModel.error, "Should set error")
+    }
+
+    // MARK: - Data Preservation Tests
+
+    func testLoadNotesPreservesExistingDataOnError() async {
+        // Given
+        let note1 = createTestNote(title: "Note 1", content: "Content 1")
+        _ = try? await repository.create(note: note1)
+
+        viewModel = NoteListViewModel(repository: repository)
+        await viewModel.loadNotes()
+        XCTAssertEqual(viewModel.notes.count, 1, "Should load initial notes")
+
+        // Switch to failing repository
+        let failingRepo = FailingRepository()
+        viewModel = NoteListViewModel(repository: failingRepo)
+        viewModel.notes = [note1] // Simulate having existing notes
+
+        // When
+        await viewModel.loadNotes()
+
+        // Then
+        XCTAssertNotNil(viewModel.error, "Should have error")
+        XCTAssertEqual(viewModel.notes.count, 1, "Should preserve existing notes on error")
+    }
+
     // MARK: - Concurrent Operations Tests
 
     func testConcurrentCreateOperations() async {
@@ -353,5 +431,33 @@ final class NoteListViewModelTests: XCTestCase {
             backlinks: [],
             unknownFrontmatterFields: [:]
         )
+    }
+}
+
+// MARK: - Mock Failing Repository
+
+actor FailingRepository: NoteRepository {
+    func create(note: Note) async throws -> Note {
+        throw RepositoryError.storageError("Simulated failure")
+    }
+
+    func read(id: UUID) async throws -> Note? {
+        throw RepositoryError.storageError("Simulated failure")
+    }
+
+    func update(note: Note) async throws -> Note {
+        throw RepositoryError.storageError("Simulated failure")
+    }
+
+    func delete(id: UUID) async throws {
+        throw RepositoryError.storageError("Simulated failure")
+    }
+
+    func list() async throws -> [Note] {
+        throw RepositoryError.storageError("Simulated failure")
+    }
+
+    func search(query: String) async throws -> [Note] {
+        throw RepositoryError.storageError("Simulated failure")
     }
 }
