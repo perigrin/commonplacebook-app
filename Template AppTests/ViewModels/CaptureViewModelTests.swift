@@ -163,7 +163,7 @@ final class CaptureViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.isRecording)
 
         // WHEN stopping recording
-        await viewModel.stopRecording()
+        _ = await viewModel.stopRecording()
 
         // THEN isRecording is false
         XCTAssertFalse(viewModel.isRecording)
@@ -175,7 +175,7 @@ final class CaptureViewModelTests: XCTestCase {
         await viewModel.startRecording()
 
         // WHEN stopping recording
-        await viewModel.stopRecording()
+        _ = await viewModel.stopRecording()
 
         // THEN speech recognition is stopped
         XCTAssertTrue(mockSpeechService.stopRecordingCalled)
@@ -187,13 +187,13 @@ final class CaptureViewModelTests: XCTestCase {
         await viewModel.startRecording()
 
         // WHEN stopping recording
-        await viewModel.stopRecording()
+        _ = await viewModel.stopRecording()
 
         // THEN audio monitoring is stopped
         XCTAssertTrue(mockAudioMonitor.stopMonitoringCalled)
     }
 
-    func testStopRecordingReturnsTranscription() async {
+    func testStopRecordingReturnsNoteWithTranscription() async {
         // GIVEN recording with transcription
         mockSpeechService.permissionGranted = true
         await viewModel.startRecording()
@@ -201,9 +201,12 @@ final class CaptureViewModelTests: XCTestCase {
         try? await Task.sleep(nanoseconds: 100_000_000)
 
         // WHEN stopping recording
-        await viewModel.stopRecording()
+        let note = await viewModel.stopRecording()
 
-        // THEN transcription is preserved
+        // THEN note is returned with transcription
+        XCTAssertNotNil(note)
+        XCTAssertTrue(note!.content.contains("Test transcription"))
+        // AND transcription is preserved in viewModel
         XCTAssertEqual(viewModel.transcription, "Test transcription")
     }
 
@@ -217,7 +220,7 @@ final class CaptureViewModelTests: XCTestCase {
         try? await Task.sleep(nanoseconds: 100_000_000)
 
         // WHEN canceling recording
-        await viewModel.cancelRecording()
+        viewModel.cancelRecording()
 
         // THEN transcription is cleared
         XCTAssertEqual(viewModel.transcription, "")
@@ -229,7 +232,7 @@ final class CaptureViewModelTests: XCTestCase {
         await viewModel.startRecording()
 
         // WHEN canceling recording
-        await viewModel.cancelRecording()
+        viewModel.cancelRecording()
 
         // THEN isRecording is false
         XCTAssertFalse(viewModel.isRecording)
@@ -241,7 +244,7 @@ final class CaptureViewModelTests: XCTestCase {
         await viewModel.startRecording()
 
         // WHEN canceling recording
-        await viewModel.cancelRecording()
+        viewModel.cancelRecording()
 
         // THEN both services are stopped
         XCTAssertTrue(mockSpeechService.stopRecordingCalled)
@@ -358,19 +361,19 @@ final class CaptureViewModelTests: XCTestCase {
         // Cycle 1
         await viewModel.startRecording()
         XCTAssertTrue(viewModel.isRecording)
-        await viewModel.stopRecording()
+        _ = await viewModel.stopRecording()
         XCTAssertFalse(viewModel.isRecording)
 
         // Cycle 2
         await viewModel.startRecording()
         XCTAssertTrue(viewModel.isRecording)
-        await viewModel.stopRecording()
+        _ = await viewModel.stopRecording()
         XCTAssertFalse(viewModel.isRecording)
 
         // Cycle 3
         await viewModel.startRecording()
         XCTAssertTrue(viewModel.isRecording)
-        await viewModel.cancelRecording()
+        viewModel.cancelRecording()
         XCTAssertFalse(viewModel.isRecording)
     }
 }

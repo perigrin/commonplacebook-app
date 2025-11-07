@@ -40,19 +40,30 @@ class CaptureViewModel: ObservableObject {
     // MARK: - Setup
 
     private func setupBindings() {
-        // Bind transcription from speech service
+        // Bind transcription from speech service with thread safety
         speechService.$transcription
-            .assign(to: &$transcription)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] text in
+                self?.transcription = text
+            }
+            .store(in: &cancellables)
 
-        // Bind audio level from monitor
+        // Bind audio level from monitor with thread safety
         audioMonitor.$audioLevel
-            .assign(to: &$audioLevel)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] level in
+                self?.audioLevel = level
+            }
+            .store(in: &cancellables)
     }
 
     // MARK: - Recording Control
 
     /// Start recording with speech recognition and audio monitoring
     func startRecording() async {
+        // Guard against duplicate calls
+        guard !isRecording else { return }
+
         error = nil
 
         // Request permission
@@ -75,17 +86,22 @@ class CaptureViewModel: ObservableObject {
             try audioMonitor.startMonitoring()
         } catch {
             self.error = error
-            // Stop speech if audio monitor fails
-            _ = await speechService.stopRecording()
+            // Clean up: stop speech recognition
+            do {
+                _ = try await speechService.stopRecording()
+            } catch {
+                // Ignore cleanup errors, original error already set
+            }
             return
         }
 
         isRecording = true
     }
 
-    /// Stop recording and preserve transcription for saving
-    func stopRecording() async {
-        guard isRecording else { return }
+    /// Stop recording and return note with transcription (without saving)
+    /// - Returns: Note with transcription and metadata, or nil if empty
+    func stopRecording() async -> Note? {
+        guard isRecording else { return nil }
 
         // Stop audio monitoring
         audioMonitor.stopMonitoring()
@@ -95,17 +111,43 @@ class CaptureViewModel: ObservableObject {
         transcription = finalTranscription
 
         isRecording = false
+
+        // Create note from transcription without saving
+        let content = finalTranscription.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !content.isEmpty else { return nil }
+
+        // Collect metadata
+        let device = await metadataCollector.getCurrentDevice()
+        let timestamp = await metadataCollector.generateTimestamp()
+        let location = await metadataCollector.getCurrentLocation()
+
+        // Extract title
+        let title = extractTitle(from: content)
+
+        // Return note without saving to repository
+        return Note(
+            id: UUID(),
+            created: timestamp,
+            device: device,
+            location: location,
+            content: content,
+            title: title,
+            backlinks: [],
+            unknownFrontmatterFields: [:]
+        )
     }
 
     /// Cancel recording and discard transcription
-    func cancelRecording() async {
+    func cancelRecording() {
         guard isRecording else { return }
 
         // Stop audio monitoring
         audioMonitor.stopMonitoring()
 
         // Stop speech recognition
-        _ = await speechService.stopRecording()
+        Task {
+            _ = await speechService.stopRecording()
+        }
 
         // Clear transcription
         transcription = ""
