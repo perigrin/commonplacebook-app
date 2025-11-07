@@ -7,9 +7,15 @@ import Foundation
 /// Provides timestamp-ordered UUIDs for better database performance and natural ordering
 enum UUIDv7 {
 
+    // Thread-safe lock for UUID generation
+    private static let lock = NSLock()
+
     /// Generate a new UUID v7
     /// - Returns: A new UUID v7 with embedded timestamp
+    /// Thread-safe: Multiple threads can call this concurrently without race conditions
     static func generate() -> UUID {
+        lock.lock()
+        defer { lock.unlock() }
         let timestamp = Date().timeIntervalSince1970
         return generate(at: timestamp)
     }

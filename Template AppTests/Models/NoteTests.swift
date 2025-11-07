@@ -35,6 +35,26 @@ struct NoteTests {
         #expect(timestamp2 > timestamp1)
     }
 
+    @Test func uuidV7ThreadSafety() async throws {
+        // Generate UUIDs concurrently from multiple threads
+        await withTaskGroup(of: UUID.self) { group in
+            // Launch 100 concurrent tasks
+            for _ in 0..<100 {
+                group.addTask {
+                    return UUIDv7.generate()
+                }
+            }
+
+            var uuids = Set<UUID>()
+            for await uuid in group {
+                uuids.insert(uuid)
+            }
+
+            // All UUIDs should be unique (no collisions)
+            #expect(uuids.count == 100)
+        }
+    }
+
     // MARK: - Device Name Tests
 
     @Test func deviceNameRetrieval() async throws {
@@ -213,5 +233,40 @@ struct NoteTests {
         var invalidLocation = validNote
         invalidLocation.location = Location(latitude: 91.0, longitude: 0.0, accuracy: 5.0)
         #expect(!invalidLocation.isValid)
+    }
+
+    @Test func noteHashableContract() async throws {
+        // Create two identical notes
+        let id = UUIDv7.generate()
+        let created = Date()
+        let note1 = Note(
+            id: id,
+            created: created,
+            device: "iPhone",
+            location: Location(latitude: 37.7749, longitude: -122.4194, accuracy: 5.0),
+            content: "Test content",
+            title: "Test",
+            backlinks: [UUID()],
+            unknownFrontmatterFields: ["custom": "value"]
+        )
+
+        let note2 = Note(
+            id: id,
+            created: created,
+            device: "iPhone",
+            location: Location(latitude: 37.7749, longitude: -122.4194, accuracy: 5.0),
+            content: "Test content",
+            title: "Test",
+            backlinks: note1.backlinks,
+            unknownFrontmatterFields: ["custom": "value"]
+        )
+
+        // Verify Hashable contract: equal objects must have equal hash values
+        #expect(note1 == note2)
+        #expect(note1.hashValue == note2.hashValue)
+
+        // Verify they can be used in a Set correctly
+        let noteSet: Set<Note> = [note1, note2]
+        #expect(noteSet.count == 1) // Should only have one element since they're equal
     }
 }

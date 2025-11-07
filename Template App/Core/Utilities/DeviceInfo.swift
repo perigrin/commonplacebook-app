@@ -7,6 +7,7 @@ import Foundation
 import UIKit
 #elseif os(macOS)
 import AppKit
+import IOKit
 #endif
 
 /// Device information utilities
@@ -33,6 +34,9 @@ enum DeviceInfo {
             IOServiceMatching("IOPlatformExpertDevice")
         )
 
+        // Ensure service is always released, even if an error occurs
+        defer { IOObjectRelease(service) }
+
         var modelIdentifier: String?
 
         if let modelData = IORegistryEntryCreateCFProperty(
@@ -44,8 +48,6 @@ enum DeviceInfo {
             modelIdentifier = String(data: modelData, encoding: .utf8)?
                 .trimmingCharacters(in: .controlCharacters)
         }
-
-        IOObjectRelease(service)
 
         return modelIdentifier ?? ProcessInfo.processInfo.hostName
     }

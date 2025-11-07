@@ -64,8 +64,16 @@ struct Note: Codable, Equatable, Hashable, Identifiable {
     }
 
     /// Hash for Hashable conformance
+    /// All fields used in equality comparison must be hashed to maintain Hashable contract
     func hash(into hasher: inout Hasher) {
         hasher.combine(id)
+        hasher.combine(created)
+        hasher.combine(device)
+        hasher.combine(location)
+        hasher.combine(content)
+        hasher.combine(title)
+        hasher.combine(backlinks)
+        hasher.combine(unknownFrontmatterFields)
     }
 
     /// Equality for Equatable conformance
