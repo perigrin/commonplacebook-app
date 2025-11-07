@@ -12,6 +12,7 @@ struct Note: Codable, Equatable, Hashable, Identifiable {
     var content: String
     var title: String
     var backlinks: [UUID]
+    var unknownFrontmatterFields: [String: String]  // Preserve unknown YAML fields
 
     /// Check if note is valid
     var isValid: Bool {
@@ -35,7 +36,8 @@ struct Note: Codable, Equatable, Hashable, Identifiable {
         location: Location?,
         content: String,
         title: String,
-        backlinks: [UUID]
+        backlinks: [UUID],
+        unknownFrontmatterFields: [String: String] = [:]
     ) {
         self.id = id
         self.created = created
@@ -44,6 +46,7 @@ struct Note: Codable, Equatable, Hashable, Identifiable {
         self.content = content
         self.title = title
         self.backlinks = backlinks
+        self.unknownFrontmatterFields = unknownFrontmatterFields
     }
 
     /// Add a backlink to this note
@@ -73,6 +76,7 @@ struct Note: Codable, Equatable, Hashable, Identifiable {
                lhs.location == rhs.location &&
                lhs.content == rhs.content &&
                lhs.title == rhs.title &&
-               lhs.backlinks == rhs.backlinks
+               lhs.backlinks == rhs.backlinks &&
+               lhs.unknownFrontmatterFields == rhs.unknownFrontmatterFields
     }
 }

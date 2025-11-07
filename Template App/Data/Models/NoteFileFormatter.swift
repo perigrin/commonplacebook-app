@@ -1,0 +1,271 @@
+// ABOUTME: Serializes and deserializes notes to/from markdown with YAML frontmatter
+// ABOUTME: Handles conversion between Note objects and file format with metadata preservation
+
+import Foundation
+
+/// Formats notes as markdown files with YAML frontmatter
+class NoteFileFormatter {
+
+    private let frontmatterDelimiter = "---"
+    private let dateFormatter: ISO8601DateFormatter
+
+    init() {
+        self.dateFormatter = ISO8601DateFormatter()
+        self.dateFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    }
+
+    /// Serialize a note to markdown string with YAML frontmatter
+    /// - Parameter note: The note to serialize
+    /// - Returns: Markdown string with YAML frontmatter
+    func serialize(note: Note) -> String {
+        var yaml = [String]()
+
+        // Required fields
+        yaml.append("id: \(note.id.uuidString)")
+        yaml.append("created: \(dateFormatter.string(from: note.created))")
+        yaml.append("device: \(note.device)")
+
+        // Optional location
+        if let location = note.location {
+            yaml.append("location:")
+            yaml.append("  latitude: \(location.latitude)")
+            yaml.append("  longitude: \(location.longitude)")
+            yaml.append("  accuracy: \(location.accuracy)")
+        }
+
+        // Optional backlinks
+        if !note.backlinks.isEmpty {
+            yaml.append("backlinks:")
+            for backlink in note.backlinks {
+                yaml.append("  - \(backlink.uuidString)")
+            }
+        }
+
+        // Unknown frontmatter fields (preserve them)
+        for (key, value) in note.unknownFrontmatterFields.sorted(by: { $0.key < $1.key }) {
+            yaml.append("\(key): \(value)")
+        }
+
+        // Build final markdown
+        var result = frontmatterDelimiter + "\n"
+        result += yaml.joined(separator: "\n")
+        result += "\n" + frontmatterDelimiter + "\n"
+        result += "\n"
+        result += note.content
+
+        return result
+    }
+
+    /// Deserialize markdown string with YAML frontmatter to a note
+    /// - Parameter content: The markdown content with frontmatter
+    /// - Returns: Deserialized note
+    /// - Throws: NoteFileFormatterError if parsing fails
+    func deserialize(content: String) throws -> Note {
+        // Split into frontmatter and content
+        let components = try splitFrontmatter(content)
+
+        // Parse YAML frontmatter
+        let metadata = try parseYAML(components.frontmatter)
+
+        // Extract required fields
+        guard let idString = metadata["id"] as? String,
+              let id = UUID(uuidString: idString) else {
+            throw NoteFileFormatterError.invalidUUID(metadata["id"] as? String ?? "nil")
+        }
+
+        guard let createdString = metadata["created"] as? String,
+              let created = dateFormatter.date(from: createdString) else {
+            throw NoteFileFormatterError.invalidDate(metadata["created"] as? String ?? "nil")
+        }
+
+        guard let device = metadata["device"] as? String else {
+            throw NoteFileFormatterError.missingRequiredField("device")
+        }
+
+        // Extract optional location
+        var location: Location? = nil
+        if let locationDict = metadata["location"] as? [String: Any],
+           let latitude = locationDict["latitude"] as? Double,
+           let longitude = locationDict["longitude"] as? Double,
+           let accuracy = locationDict["accuracy"] as? Double {
+            location = Location(latitude: latitude, longitude: longitude, accuracy: accuracy)
+        }
+
+        // Extract optional backlinks
+        var backlinks: [UUID] = []
+        if let backlinksArray = metadata["backlinks"] as? [String] {
+            backlinks = backlinksArray.compactMap { UUID(uuidString: $0) }
+        }
+
+        // Extract title from content (first # line or use first line)
+        let title = extractTitle(from: components.content)
+
+        // Capture unknown fields (fields that aren't in our model)
+        let knownKeys: Set<String> = ["id", "created", "device", "location", "backlinks"]
+        var unknownFields: [String: String] = [:]
+        for (key, value) in metadata {
+            if !knownKeys.contains(key), let stringValue = value as? String {
+                unknownFields[key] = stringValue
+            } else if !knownKeys.contains(key), let intValue = value as? Int {
+                unknownFields[key] = String(intValue)
+            } else if !knownKeys.contains(key) {
+                // Convert other types to string
+                unknownFields[key] = String(describing: value)
+            }
+        }
+
+        return Note(
+            id: id,
+            created: created,
+            device: device,
+            location: location,
+            content: components.content,
+            title: title,
+            backlinks: backlinks,
+            unknownFrontmatterFields: unknownFields
+        )
+    }
+
+    // MARK: - Private Helpers
+
+    /// Split content into frontmatter and markdown body
+    private func splitFrontmatter(_ content: String) throws -> (frontmatter: String, content: String) {
+        let lines = content.components(separatedBy: .newlines)
+
+        guard lines.first == frontmatterDelimiter else {
+            throw NoteFileFormatterError.missingFrontmatter
+        }
+
+        // Find the closing delimiter
+        var frontmatterEndIndex: Int?
+        for (index, line) in lines.enumerated() where index > 0 {
+            if line == frontmatterDelimiter {
+                frontmatterEndIndex = index
+                break
+            }
+        }
+
+        guard let endIndex = frontmatterEndIndex else {
+            throw NoteFileFormatterError.missingFrontmatter
+        }
+
+        let frontmatterLines = Array(lines[1..<endIndex])
+        let contentLines = Array(lines[(endIndex + 1)...])
+
+        let frontmatter = frontmatterLines.joined(separator: "\n")
+        let contentBody = contentLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return (frontmatter, contentBody)
+    }
+
+    /// Parse YAML string into dictionary
+    /// This is a simple YAML parser for our specific format
+    private func parseYAML(_ yaml: String) throws -> [String: Any] {
+        var result: [String: Any] = [:]
+        let lines = yaml.components(separatedBy: .newlines)
+
+        var currentKey: String?
+        var currentIndentLevel = 0
+        var currentArray: [String] = []
+        var currentDict: [String: Any] = [:]
+        var inArray = false
+        var inDict = false
+
+        for line in lines {
+            guard !line.trimmingCharacters(in: .whitespaces).isEmpty else { continue }
+
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            let indentLevel = line.prefix(while: { $0 == " " }).count
+
+            // Handle array items
+            if trimmed.hasPrefix("- ") {
+                let value = String(trimmed.dropFirst(2))
+                currentArray.append(value)
+                inArray = true
+                continue
+            }
+
+            // If we were building an array, save it
+            if inArray && !trimmed.hasPrefix("- ") {
+                if let key = currentKey {
+                    result[key] = currentArray
+                }
+                currentArray = []
+                inArray = false
+            }
+
+            // If we were building a dict, save it
+            if inDict && indentLevel == 0 {
+                if let key = currentKey {
+                    result[key] = currentDict
+                }
+                currentDict = [:]
+                inDict = false
+            }
+
+            // Parse key-value pairs
+            if let colonIndex = trimmed.firstIndex(of: ":") {
+                let key = String(trimmed[..<colonIndex])
+                let valueStart = trimmed.index(after: colonIndex)
+                let value = String(trimmed[valueStart...]).trimmingCharacters(in: .whitespaces)
+
+                if indentLevel > 0 {
+                    // This is a nested value
+                    if let doubleValue = Double(value) {
+                        currentDict[key] = doubleValue
+                    } else {
+                        currentDict[key] = value
+                    }
+                    inDict = true
+                } else {
+                    // Top-level key
+                    if value.isEmpty {
+                        // Key with no value - expect nested content
+                        currentKey = key
+                        currentIndentLevel = indentLevel
+                    } else if value == "[]" {
+                        // Empty array
+                        result[key] = []
+                    } else {
+                        // Simple value
+                        result[key] = value
+                        currentKey = nil
+                    }
+                }
+            }
+        }
+
+        // Save any remaining array or dict
+        if inArray, let key = currentKey {
+            result[key] = currentArray
+        }
+        if inDict, let key = currentKey {
+            result[key] = currentDict
+        }
+
+        return result
+    }
+
+    /// Extract title from markdown content
+    private func extractTitle(from content: String) -> String {
+        let lines = content.components(separatedBy: .newlines)
+
+        // Look for first # header
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("# ") {
+                return String(trimmed.dropFirst(2))
+            }
+        }
+
+        // Fallback: use first non-empty line, max 50 chars
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if !trimmed.isEmpty {
+                return String(trimmed.prefix(50))
+            }
+        }
+
+        return "Untitled"
+    }
+}
