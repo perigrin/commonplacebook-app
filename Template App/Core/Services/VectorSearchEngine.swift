@@ -10,7 +10,7 @@ struct SearchResult: Equatable {
 }
 
 /// Vector search engine for semantic search using embeddings
-actor VectorSearchEngine {
+actor VectorSearchEngine: VectorSearchEngineProtocol {
 
     // MARK: - Properties
 
