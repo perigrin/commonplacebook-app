@@ -588,7 +588,7 @@ Use Speech framework. Handle iOS 17+ requirements. Request microphone permission
 
 ---
 
-#### Step 10: Audio Visualization Component
+#### Step 10: Audio Visualization Component ✅ COMPLETED
 
 **Goal**: Show visual feedback during recording (waveform)
 
@@ -640,7 +640,7 @@ Use AVFoundation for audio monitoring. Keep animation smooth (60fps).
 
 ---
 
-#### Step 11: Capture View Model
+#### Step 11: Capture View Model ✅ COMPLETED
 
 **Goal**: Coordinate speech recognition, metadata collection, and note creation
 
