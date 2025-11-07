@@ -19,7 +19,15 @@ class ProductionSpeechRecognizer: SpeechRecognizerProtocol {
     private let recognizer: SFSpeechRecognizer
 
     init(locale: Locale = Locale.current) {
-        self.recognizer = SFSpeechRecognizer(locale: locale)!
+        // Try requested locale first, fall back to en-US if unsupported
+        if let recognizer = SFSpeechRecognizer(locale: locale) {
+            self.recognizer = recognizer
+        } else if let fallbackRecognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US")) {
+            self.recognizer = fallbackRecognizer
+        } else {
+            // Last resort: try device locale
+            self.recognizer = SFSpeechRecognizer(locale: Locale.current) ?? SFSpeechRecognizer()!
+        }
     }
 
     var isAvailable: Bool {

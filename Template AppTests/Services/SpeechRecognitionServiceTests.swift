@@ -390,9 +390,10 @@ class MockAudioEngine: AudioEngineProtocol {
     var resetCalled = false
     var shouldFailStart = false
     private var _isRunning = false
+    private let mockEngine = AVAudioEngine()
 
     var inputNode: AVAudioInputNode {
-        return AVAudioInputNode()
+        return mockEngine.inputNode
     }
 
     var isRunning: Bool {

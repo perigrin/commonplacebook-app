@@ -15,6 +15,11 @@ class SpeechRecognitionService: ObservableObject {
     @Published private(set) var isRecording: Bool = false
     @Published var transcription: String = ""
 
+    /// Publisher for transcription updates
+    var transcriptionPublisher: Published<String>.Publisher {
+        return $transcription
+    }
+
     // MARK: - Private Properties
 
     private let recognizer: SpeechRecognizerProtocol
@@ -100,6 +105,8 @@ class SpeechRecognitionService: ObservableObject {
 
             try audioEngine.start()
         } catch {
+            // Clean up tap on failure
+            audioEngine.inputNode.removeTap(onBus: 0)
             throw SpeechRecognitionError.microphoneUnavailable
         }
 
@@ -127,8 +134,8 @@ class SpeechRecognitionService: ObservableObject {
         transcription = ""
         lastTranscriptionTime = Date()
 
-        // Start silence detection
-        startSilenceDetection()
+        // Start silence detection (using one-shot timer approach)
+        restartSilenceTimer()
     }
 
     /// Stop recording and return final transcription
@@ -146,6 +153,9 @@ class SpeechRecognitionService: ObservableObject {
         audioEngine.stop()
         audioEngine.inputNode.removeTap(onBus: 0)
 
+        // Deactivate audio session
+        try? audioSession.setActive(false, options: .notifyOthersOnDeactivation)
+
         // Cancel recognition request and task
         recognitionRequest?.endAudio()
         recognitionTask?.cancel()
@@ -159,25 +169,6 @@ class SpeechRecognitionService: ObservableObject {
     }
 
     // MARK: - Silence Detection
-
-    private func startSilenceDetection() {
-        silenceTimer?.cancel()
-        silenceTimer = Task { @MainActor in
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: UInt64(silenceTimeout * 1_000_000_000))
-
-                guard !Task.isCancelled else { break }
-
-                // Check if enough time has passed since last transcription
-                if let lastTime = lastTranscriptionTime,
-                   Date().timeIntervalSince(lastTime) >= silenceTimeout {
-                    // Silence detected - stop recording
-                    _ = await self.stopRecording()
-                    break
-                }
-            }
-        }
-    }
 
     private func restartSilenceTimer() {
         // Cancel existing timer
