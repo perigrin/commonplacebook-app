@@ -74,11 +74,13 @@ actor CRDTService {
             }
 
             // Add new backlinks that don't exist (union semantics)
+            var insertIndex = existingCount
             for backlink in sortedBacklinks {
                 let backlinkString = backlink.uuidString
                 if !existingBacklinkStrings.contains(backlinkString) {
                     // Append to end for CRDT consistency
-                    try docHandle.insert(obj: backlinksObj, index: UInt64(existingCount + existingBacklinkStrings.count), value: .String(backlinkString))
+                    try docHandle.insert(obj: backlinksObj, index: UInt64(insertIndex), value: .String(backlinkString))
+                    insertIndex += 1
                 }
             }
         } else {
