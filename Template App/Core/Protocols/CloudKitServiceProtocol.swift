@@ -48,6 +48,9 @@ protocol CRDTNoteRepositoryProtocol: Actor {
     /// Get CRDT data for a note (for syncing)
     func getCRDTData(for id: UUID) async throws -> Data?
 
+    /// Save CRDT data for a note (for persisting reconstructed data)
+    func saveCRDTData(for id: UUID, data: Data) async throws
+
     /// List notes modified since a date
     func listModifiedSince(_ date: Date) async throws -> [Note]
 
@@ -62,4 +65,7 @@ protocol CRDTNoteRepositoryProtocol: Actor {
 
     /// Clear tombstone after successful sync
     func clearTombstone(id: UUID) throws
+
+    /// Clean up old tombstones to prevent unbounded growth
+    func cleanupOldTombstones(olderThan days: Int) throws
 }

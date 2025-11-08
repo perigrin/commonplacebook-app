@@ -30,9 +30,10 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
     private let tombstoneDeletedAtColumn = Expression<Int64>("deleted_at")
 
     // LRU cache for documents (bounded memory)
-    private let maxCacheSize = 100
+    private let maxCacheSize = 500  // Increased from 100
     private var documentCache: [UUID: DocHandle] = [:]
     private var cacheOrder: [UUID] = []
+    private var activeDocuments: Set<UUID> = []  // Track documents in use
 
     // File system watcher
     private var fileWatcher: DispatchSourceFileSystemObject?
@@ -56,6 +57,9 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
 
         // Create table if needed
         try createTableIfNeeded()
+
+        // Clean up tombstones older than 30 days on initialization
+        try? cleanupOldTombstones(olderThan: 30)
 
         // Ensure notes directory exists
         try ensureDirectoryExists()
@@ -84,11 +88,17 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
         try db.run("CREATE INDEX IF NOT EXISTS idx_title ON notes(title)")
         try db.run("CREATE INDEX IF NOT EXISTS idx_content ON notes(content)")
 
+        // Add index on last_modified for listModifiedSince queries
+        try db.run("CREATE INDEX IF NOT EXISTS idx_notes_last_modified ON notes(last_modified)")
+
         // Create tombstones table
         try db.run(tombstonesTable.create(ifNotExists: true) { table in
             table.column(tombstoneIdColumn, primaryKey: true)
             table.column(tombstoneDeletedAtColumn)
         })
+
+        // Add index on tombstone deleted_at for efficient cleanup
+        try db.run("CREATE INDEX IF NOT EXISTS idx_tombstone_deleted_at ON tombstones(deleted_at)")
     }
 
     private func ensureDirectoryExists() throws {
@@ -135,11 +145,17 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
         cacheOrder.removeAll { $0 == id }
         cacheOrder.append(id)
 
-        // Evict oldest if cache full
+        // Evict old entries, but skip active documents
         while documentCache.count > maxCacheSize {
-            if let oldest = cacheOrder.first {
+            if let oldest = cacheOrder.first, !activeDocuments.contains(oldest) {
                 documentCache.removeValue(forKey: oldest)
                 cacheOrder.removeFirst()
+            } else if let oldest = cacheOrder.first {
+                // Skip this one, try next
+                cacheOrder.removeFirst()
+                cacheOrder.append(oldest)
+            } else {
+                break
             }
         }
     }
@@ -147,6 +163,14 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
     private func invalidateCache(for id: UUID) {
         documentCache.removeValue(forKey: id)
         cacheOrder.removeAll { $0 == id }
+    }
+
+    private func markActive(id: UUID) {
+        activeDocuments.insert(id)
+    }
+
+    private func markInactive(id: UUID) {
+        activeDocuments.remove(id)
     }
 
     // MARK: - NoteRepository Protocol
@@ -192,6 +216,9 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
     }
 
     func read(id: UUID) async throws -> Note? {
+        markActive(id: id)
+        defer { markInactive(id: id) }
+
         // Try cache first
         if let cachedDoc = documentCache[id] {
             do {
@@ -227,6 +254,9 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
     }
 
     func update(note: Note) async throws -> Note {
+        markActive(id: note.id)
+        defer { markInactive(id: note.id) }
+
         // Ensure note exists
         guard let existingDoc = try await loadDocument(id: note.id) else {
             throw RepositoryError.noteNotFound(note.id)
@@ -266,6 +296,9 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
     }
 
     func delete(id: UUID) async throws {
+        markActive(id: id)
+        defer { markInactive(id: id) }
+
         // Track deletion before removing from database
         try trackDeletion(id: id)
 
@@ -529,6 +562,27 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
         return row[crdtDataColumn]
     }
 
+    /// Save CRDT data for a note (for persisting reconstructed data)
+    func saveCRDTData(for id: UUID, data: Data) async throws {
+        let query = notesTable.filter(idColumn == id.uuidString)
+
+        // Verify note exists
+        guard try db.pluck(query) != nil else {
+            throw RepositoryError.noteNotFound(id)
+        }
+
+        // Update CRDT data in transaction
+        try db.transaction {
+            try db.run(query.update(
+                crdtDataColumn <- data,
+                lastModifiedColumn <- Int64(Date().timeIntervalSince1970)
+            ))
+        }
+
+        // Invalidate cache to force reload with new CRDT data
+        invalidateCache(for: id)
+    }
+
     /// List notes modified since a date
     func listModifiedSince(_ date: Date) async throws -> [Note] {
         let timestamp = Int64(date.timeIntervalSince1970)
@@ -583,5 +637,12 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
     /// Clear tombstone after successful sync
     func clearTombstone(id: UUID) throws {
         try db.run(tombstonesTable.filter(tombstoneIdColumn == id.uuidString).delete())
+    }
+
+    /// Clean up old tombstones to prevent unbounded growth
+    func cleanupOldTombstones(olderThan days: Int = 30) throws {
+        let cutoff = Date().addingTimeInterval(-Double(days * 24 * 60 * 60))
+        let cutoffTimestamp = Int64(cutoff.timeIntervalSince1970)
+        try db.run(tombstonesTable.filter(tombstoneDeletedAtColumn < cutoffTimestamp).delete())
     }
 }

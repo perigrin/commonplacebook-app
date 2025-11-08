@@ -148,6 +148,11 @@ actor iCloudSyncService {
         _isSyncing = false
         statusSubject.send(.idle)
 
+        // Cancel and await active sync
+        activeSyncTask?.cancel()
+        await activeSyncTask?.value
+        activeSyncTask = nil
+
         // Cancel ongoing operations
         syncTask?.cancel()
         backgroundSyncTask?.cancel()
@@ -169,12 +174,17 @@ actor iCloudSyncService {
     private func handleAccountChange() async {
         print("iCloud account changed - re-verifying authentication")
 
+        // Wait for active sync to complete before stopping
+        if let activeTask = activeSyncTask {
+            print("Waiting for active sync to complete before handling account change")
+            await activeTask.value
+        }
+
         do {
             let container = CKContainer.default()
             let accountStatus = try await container.accountStatus()
 
             if accountStatus != .available {
-                // Account no longer available - stop sync
                 await stop()
                 statusSubject.send(.error("iCloud account changed. Please restart sync."))
             }
@@ -193,8 +203,8 @@ actor iCloudSyncService {
         }
 
         activeSyncTask = Task {
-            defer { activeSyncTask = nil }
             await performSync()
+            activeSyncTask = nil  // Move here, not in defer
         }
 
         await activeSyncTask?.value
@@ -377,6 +387,10 @@ actor iCloudSyncService {
                 // Create CRDT from current note state
                 let localDoc = await crdtService.createDocument()
                 try await crdtService.updateNote(docHandle: localDoc, note: localNote)
+
+                // CRITICAL: Save the reconstructed CRDT data to prevent repeated reconstruction
+                let reconstructedData = await crdtService.save(docHandle: localDoc)
+                try await repository.saveCRDTData(for: id, data: reconstructedData)
 
                 // Now merge properly
                 let merged = try await crdtService.merge(doc1: localDoc, doc2: remoteDoc)
