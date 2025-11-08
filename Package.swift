@@ -13,12 +13,16 @@ let package = Package(
             targets: ["CommonplaceBook"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/jpsim/Yams.git", from: "5.0.6")
+        .package(url: "https://github.com/jpsim/Yams.git", from: "5.0.6"),
+        .package(url: "https://github.com/automerge/automerge-swift.git", from: "0.6.1")
     ],
     targets: [
         .target(
             name: "CommonplaceBook",
-            dependencies: ["Yams"],
+            dependencies: [
+                "Yams",
+                .product(name: "Automerge", package: "automerge-swift")
+            ],
             path: "Template App",
             exclude: [
                 "App/Template_AppApp.swift",
