@@ -19,7 +19,26 @@ actor iCloudSyncService {
 
     // Change tracking
     private var lastSyncDate: Date?
-    private var serverChangeToken: CKServerChangeToken?
+    private var serverChangeToken: CKServerChangeToken? {
+        get {
+            guard let data = UserDefaults.standard.data(forKey: "icloud_sync_change_token") else {
+                return nil
+            }
+            return try? NSKeyedUnarchiver.unarchivedObject(ofClass: CKServerChangeToken.self, from: data)
+        }
+        set {
+            if let newValue = newValue {
+                let data = try? NSKeyedArchiver.archivedData(withRootObject: newValue, requiringSecureCoding: true)
+                UserDefaults.standard.set(data, forKey: "icloud_sync_change_token")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "icloud_sync_change_token")
+            }
+        }
+    }
+
+    // Retry management
+    private var retryCount = 0
+    private let maxRetries = 5
 
     // Status publishing (actor-safe)
     private let statusSubject = CurrentValueSubject<SyncStatus, Never>(.idle)
@@ -61,6 +80,34 @@ actor iCloudSyncService {
     func start() async {
         guard !_isSyncing else { return }
 
+        // Check iCloud authentication status
+        do {
+            let container = CKContainer.default()
+            let accountStatus = try await container.accountStatus()
+
+            guard accountStatus == .available else {
+                let message: String
+                switch accountStatus {
+                case .noAccount:
+                    message = "No iCloud account configured. Please sign in to iCloud in Settings."
+                case .restricted:
+                    message = "iCloud access is restricted."
+                case .couldNotDetermine:
+                    message = "Could not determine iCloud account status."
+                case .temporarilyUnavailable:
+                    message = "iCloud is temporarily unavailable."
+                @unknown default:
+                    message = "Unknown iCloud account status."
+                }
+                statusSubject.send(.error(message))
+                throw iCloudSyncError.notAuthenticated(message)
+            }
+        } catch {
+            print("Warning: iCloud authentication check failed: \(error)")
+            statusSubject.send(.error("iCloud not available: \(error.localizedDescription)"))
+            return
+        }
+
         _isSyncing = true
         statusSubject.send(.syncing)
 
@@ -70,6 +117,7 @@ actor iCloudSyncService {
         } catch {
             print("Warning: Failed to setup CloudKit zone: \(error)")
             statusSubject.send(.error("Zone setup failed: \(error.localizedDescription)"))
+            _isSyncing = false
             return
         }
 
@@ -112,15 +160,22 @@ actor iCloudSyncService {
             // Update last sync timestamp
             lastSyncDate = Date()
 
+            // Reset retry counter on success
+            retryCount = 0
             statusSubject.send(.idle)
         } catch {
             print("Sync error: \(error)")
             statusSubject.send(.error(error.localizedDescription))
 
-            // Retry after delay
-            try? await Task.sleep(nanoseconds: 5_000_000_000) // 5 seconds
-            if _isSyncing {
+            // Retry with exponential backoff up to max retries
+            if _isSyncing && retryCount < maxRetries {
+                retryCount += 1
+                let delay = min(60.0, pow(2.0, Double(retryCount)) * 5.0) // Cap at 60 seconds
+                try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
                 await syncNow()
+            } else if retryCount >= maxRetries {
+                statusSubject.send(.error("Sync failed after \(maxRetries) attempts"))
+                retryCount = 0
             }
         }
     }
@@ -310,5 +365,6 @@ actor iCloudSyncService {
     enum iCloudSyncError: Error {
         case invalidRecord
         case syncFailed(String)
+        case notAuthenticated(String)
     }
 }

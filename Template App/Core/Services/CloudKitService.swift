@@ -30,7 +30,19 @@ actor CloudKitService: CloudKitServiceProtocol {
     func saveRecords(_ records: [CKRecord]) async throws {
         guard !records.isEmpty else { return }
 
-        // Use batch operation for efficiency
+        // CloudKit limit is 400 records per operation - batch if needed
+        let batchSize = 400
+        let batches = stride(from: 0, to: records.count, by: batchSize).map {
+            Array(records[$0..<min($0 + batchSize, records.count)])
+        }
+
+        // Process each batch sequentially
+        for batch in batches {
+            try await saveBatch(batch)
+        }
+    }
+
+    private func saveBatch(_ records: [CKRecord]) async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             let operation = CKModifyRecordsOperation(recordsToSave: records, recordIDsToDelete: nil)
             operation.savePolicy = .changedKeys
@@ -50,23 +62,40 @@ actor CloudKitService: CloudKitServiceProtocol {
 
     func fetchRecords(ofType recordType: String) async throws -> [CKRecord] {
         let query = CKQuery(recordType: recordType, predicate: NSPredicate(value: true))
+        var allRecords: [CKRecord] = []
+        var cursor: CKQueryOperation.Cursor?
 
-        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<[CKRecord], Error>) in
-            var allRecords: [CKRecord] = []
+        // Fetch with cursor-based pagination to get all records
+        repeat {
+            let (records, nextCursor) = try await fetchRecordsBatch(query: query, cursor: cursor)
+            allRecords.append(contentsOf: records)
+            cursor = nextCursor
+        } while cursor != nil
 
-            let operation = CKQueryOperation(query: query)
-            operation.zoneID = recordZone.zoneID
-            operation.resultsLimit = CKQueryOperation.maximumResults
+        return allRecords
+    }
 
-            operation.recordFetchedBlock = { record in
-                allRecords.append(record)
+    private func fetchRecordsBatch(query: CKQuery, cursor: CKQueryOperation.Cursor?) async throws -> ([CKRecord], CKQueryOperation.Cursor?) {
+        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<([CKRecord], CKQueryOperation.Cursor?), Error>) in
+            var batchRecords: [CKRecord] = []
+
+            let operation: CKQueryOperation
+            if let cursor = cursor {
+                operation = CKQueryOperation(cursor: cursor)
+            } else {
+                operation = CKQueryOperation(query: query)
+                operation.zoneID = recordZone.zoneID
             }
 
-            operation.queryCompletionBlock = { _, error in
+            operation.recordFetchedBlock = { record in
+                batchRecords.append(record)
+            }
+
+            operation.queryCompletionBlock = { cursor, error in
                 if let error = error {
                     continuation.resume(throwing: error)
                 } else {
-                    continuation.resume(returning: allRecords)
+                    continuation.resume(returning: (batchRecords, cursor))
                 }
             }
 
@@ -126,16 +155,19 @@ actor CloudKitService: CloudKitServiceProtocol {
                 deletedRecordIDs.append(recordID)
             }
 
+            var fetchError: Error?
+
             operation.recordZoneFetchCompletionBlock = { zoneID, token, _, _, error in
                 if let error = error {
-                    continuation.resume(throwing: error)
+                    fetchError = error
                 } else {
                     serverChangeToken = token
                 }
             }
 
             operation.fetchRecordZoneChangesCompletionBlock = { error in
-                if let error = error {
+                // Only resume continuation here - not in zone fetch block
+                if let error = error ?? fetchError {
                     continuation.resume(throwing: error)
                 } else {
                     continuation.resume()

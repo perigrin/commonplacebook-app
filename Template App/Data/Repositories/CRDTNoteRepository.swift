@@ -346,7 +346,7 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
             } catch {
                 lastError = error
                 if attempt < 2 {
-                    Thread.sleep(forTimeInterval: pow(2.0, Double(attempt)) * 0.1)
+                    try? await Task.sleep(nanoseconds: UInt64(pow(2.0, Double(attempt)) * 100_000_000))
                 }
             }
         }
