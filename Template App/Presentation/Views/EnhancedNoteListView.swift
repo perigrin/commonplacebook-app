@@ -202,6 +202,7 @@ struct SearchResultsListView: View {
     @State private var loadedNotes: [Note] = []
     @State private var loadTask: Task<Void, Never>?
     @State private var relevanceMap: [UUID: Float] = [:]
+    @State private var loadGeneration: Int = 0
 
     var body: some View {
         List {
@@ -217,6 +218,10 @@ struct SearchResultsListView: View {
             // Cancel previous load task
             loadTask?.cancel()
 
+            // Increment generation to track this load
+            loadGeneration += 1
+            let currentGeneration = loadGeneration
+
             // Pre-compute relevance map for O(1) lookups
             relevanceMap = Dictionary(uniqueKeysWithValues: newResults.map { ($0.noteId, $0.relevance) })
 
@@ -224,13 +229,14 @@ struct SearchResultsListView: View {
             loadTask = Task { @MainActor in
                 do {
                     let notes = try await loadNotesPreservingOrder(for: newResults)
-                    if !Task.isCancelled {
+                    // Only update if this is still the latest load (not superseded by newer search)
+                    if !Task.isCancelled && currentGeneration == loadGeneration {
                         loadedNotes = notes
                     }
                 } catch {
                     // Handle error silently for now
                     // Could add error state here
-                    if !Task.isCancelled {
+                    if !Task.isCancelled && currentGeneration == loadGeneration {
                         loadedNotes = []
                     }
                 }
@@ -243,26 +249,39 @@ struct SearchResultsListView: View {
     }
 
     /// Load notes while preserving search result order
+    /// Uses batched loading with max 20 concurrent tasks to prevent memory exhaustion
     private func loadNotesPreservingOrder(for results: [SearchResult]) async throws -> [Note] {
-        // Load in parallel but maintain order
         let noteIds = results.map { $0.noteId }
 
-        // Create a dictionary for O(1) lookup
-        let notesDict = await withTaskGroup(of: (UUID, Note?).self) { group in
-            for result in results {
-                group.addTask {
-                    let note = try? await searchViewModel.repository.read(id: result.noteId)
-                    return (result.noteId, note)
+        // Load in batches of 20 concurrent tasks to prevent unbounded parallelism
+        // This prevents memory exhaustion when loading large result sets (e.g., thousands of notes)
+        let maxConcurrentTasks = 20
+        let batches = stride(from: 0, to: results.count, by: maxConcurrentTasks).map {
+            Array(results[$0..<min($0 + maxConcurrentTasks, results.count)])
+        }
+
+        // Load batches sequentially, with parallel loading within each batch
+        var notesDict: [UUID: Note] = [:]
+        for batch in batches {
+            let batchNotes = await withTaskGroup(of: (UUID, Note?).self) { group in
+                for result in batch {
+                    group.addTask {
+                        let note = try? await searchViewModel.repository.read(id: result.noteId)
+                        return (result.noteId, note)
+                    }
                 }
+
+                var dict: [UUID: Note] = [:]
+                for await (id, note) in group {
+                    if let note = note {
+                        dict[id] = note
+                    }
+                }
+                return dict
             }
 
-            var dict: [UUID: Note] = [:]
-            for await (id, note) in group {
-                if let note = note {
-                    dict[id] = note
-                }
-            }
-            return dict
+            // Merge batch results into main dictionary
+            notesDict.merge(batchNotes) { _, new in new }
         }
 
         // Return in original order, filtering out failures
@@ -273,6 +292,12 @@ struct SearchResultsListView: View {
 // MARK: - Search Result Row View
 
 struct SearchResultRowView: View {
+    private enum Constants {
+        static let previewCharacterLimit = 100
+    }
+
+    private static let abstractGenerator = AbstractGenerator()
+
     let note: Note
     let relevance: Float
 
@@ -292,11 +317,11 @@ struct SearchResultRowView: View {
                     .accessibilityLabel("Relevance: \(Int(relevance * 100)) percent")
             }
 
-            Text(note.content)
+            Text(previewText)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
-                .accessibilityLabel("Note content: \(note.content)")
+                .accessibilityLabel("Note content: \(previewText)")
 
             Text(note.created, style: .relative)
                 .font(.caption)
@@ -304,6 +329,14 @@ struct SearchResultRowView: View {
                 .accessibilityLabel("Created \(note.created, style: .relative)")
         }
         .padding(.vertical, 4)
+    }
+
+    private var previewText: String {
+        // Use AbstractGenerator for smart truncation with markdown stripping
+        return Self.abstractGenerator.generateAbstract(
+            from: note.content,
+            maxLength: Constants.previewCharacterLimit
+        )
     }
 }
 
