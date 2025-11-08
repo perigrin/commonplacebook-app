@@ -6,7 +6,7 @@ import SQLite
 import Automerge
 
 /// CRDT-backed repository with SQLite persistence and file system synchronization
-actor CRDTNoteRepository: NoteRepository {
+actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
 
     private let db: Connection
     private let notesDirectory: URL
@@ -488,5 +488,48 @@ actor CRDTNoteRepository: NoteRepository {
         let sanitizedId = id.uuidString.replacingOccurrences(of: "/", with: "")
             .replacingOccurrences(of: "..", with: "")
         return notesDirectory.appendingPathComponent("\(sanitizedId).md")
+    }
+
+    // MARK: - CRDTNoteRepositoryProtocol Methods
+
+    /// Get raw CRDT data for a note (for syncing)
+    func getCRDTData(for id: UUID) async throws -> Data? {
+        let query = notesTable.filter(idColumn == id.uuidString)
+        guard let row = try db.pluck(query) else {
+            return nil
+        }
+        return row[crdtDataColumn]
+    }
+
+    /// List notes modified since a date
+    func listModifiedSince(_ date: Date) async throws -> [Note] {
+        let timestamp = Int64(date.timeIntervalSince1970)
+        let query = notesTable.filter(lastModifiedColumn > timestamp)
+
+        var notes: [Note] = []
+        for row in try db.prepare(query.select(idColumn, crdtDataColumn)) {
+            guard let id = UUID(uuidString: row[idColumn]) else {
+                continue
+            }
+
+            if let note = try await read(id: id) {
+                notes.append(note)
+            }
+        }
+
+        return notes
+    }
+
+    /// Get all note IDs (for detecting deletes)
+    func getAllNoteIDs() async throws -> Set<UUID> {
+        var ids = Set<UUID>()
+
+        for row in try db.prepare(notesTable.select(idColumn)) {
+            if let id = UUID(uuidString: row[idColumn]) {
+                ids.insert(id)
+            }
+        }
+
+        return ids
     }
 }

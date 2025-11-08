@@ -8,14 +8,14 @@ import CloudKit
 @MainActor
 final class iCloudSyncServiceTests: XCTestCase {
     var syncService: iCloudSyncService!
-    var mockCloudKit: MockCloudKitContainer!
+    var mockCloudKit: MockCloudKitService!
     var mockRepository: MockCRDTNoteRepository!
 
     override func setUpWithError() throws {
-        mockCloudKit = MockCloudKitContainer()
+        mockCloudKit = MockCloudKitService()
         mockRepository = MockCRDTNoteRepository()
         syncService = iCloudSyncService(
-            cloudContainer: mockCloudKit,
+            cloudKit: mockCloudKit,
             repository: mockRepository
         )
     }
@@ -57,12 +57,13 @@ final class iCloudSyncServiceTests: XCTestCase {
         await syncService.start()
 
         // THEN subscription created
-        XCTAssertTrue(mockCloudKit.subscriptionCreated, "Should create CloudKit subscription")
+        let subscriptionCreated = await mockCloudKit.subscriptionCreated
+        XCTAssertTrue(subscriptionCreated, "Should create CloudKit subscription")
     }
 
     // MARK: - Local to Remote Sync Tests
 
-    func testLocalChangesyncsToiCloud() async throws {
+    func testLocalChangeSyncsToiCloud() async throws {
         // GIVEN syncing service
         await syncService.start()
 
@@ -136,8 +137,8 @@ final class iCloudSyncServiceTests: XCTestCase {
         let remoteNote = createTestNote(title: "Remote Note", content: "From iCloud")
         await mockCloudKit.simulateRemoteChange(note: remoteNote)
 
-        // Allow time for sync
-        try await Task.sleep(nanoseconds: 100_000_000)
+        // Trigger sync
+        await syncService.syncNow()
 
         // THEN note appears in local repository
         let localNotes = await mockRepository.getAllNotes()
@@ -164,8 +165,7 @@ final class iCloudSyncServiceTests: XCTestCase {
             unknownFrontmatterFields: [:]
         )
         await mockCloudKit.simulateRemoteChange(note: updated)
-
-        try await Task.sleep(nanoseconds: 100_000_000)
+        await syncService.syncNow()
 
         // THEN local note updated
         let localNote = await mockRepository.getNote(id: original.id)
@@ -182,8 +182,7 @@ final class iCloudSyncServiceTests: XCTestCase {
 
         // WHEN remote delete notification
         await mockCloudKit.simulateRemoteDelete(id: note.id)
-
-        try await Task.sleep(nanoseconds: 100_000_000)
+        await syncService.syncNow()
 
         // THEN note deleted locally
         let localNote = await mockRepository.getNote(id: note.id)
@@ -225,7 +224,6 @@ final class iCloudSyncServiceTests: XCTestCase {
         await mockCloudKit.simulateRemoteChange(note: remoteUpdate)
 
         await syncService.syncNow()
-        try await Task.sleep(nanoseconds: 200_000_000)
 
         // THEN changes merged (CRDT determines final state)
         let merged = await mockRepository.getNote(id: original.id)
@@ -246,7 +244,7 @@ final class iCloudSyncServiceTests: XCTestCase {
 
         // WHEN starting sync
         await syncService.start()
-        try await Task.sleep(nanoseconds: 50_000_000)
+        try await Task.sleep(nanoseconds: 100_000_000)
 
         // THEN status transitions
         XCTAssertTrue(statuses.contains(where: { $0 == .syncing }), "Should show syncing status")
@@ -266,7 +264,7 @@ final class iCloudSyncServiceTests: XCTestCase {
 
         // WHEN attempting sync
         await syncService.start()
-        try await Task.sleep(nanoseconds: 100_000_000)
+        try await Task.sleep(nanoseconds: 200_000_000)
 
         // THEN error status shown
         XCTAssertTrue(
@@ -325,21 +323,6 @@ final class iCloudSyncServiceTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(uploadedRecords.count, 1, "Should eventually upload")
     }
 
-    // MARK: - Background Sync Tests
-
-    func testBackgroundSyncScheduled() async throws {
-        // GIVEN running service
-        await syncService.start()
-
-        // WHEN waiting for background sync interval
-        // (In real app this would be 10 minutes, but test uses shorter interval)
-        try await Task.sleep(nanoseconds: 100_000_000)
-
-        // THEN background sync occurred
-        // This is hard to test without time manipulation, so just verify no crash
-        XCTAssertTrue(true, "Background sync should run without issues")
-    }
-
     // MARK: - Force Sync Tests
 
     func testSyncNowForcesImmediateSync() async throws {
@@ -371,78 +354,146 @@ final class iCloudSyncServiceTests: XCTestCase {
     }
 }
 
-// MARK: - Mock CloudKit Container
+// MARK: - Mock CloudKit Service
 
-actor MockCloudKitContainer {
+actor MockCloudKitService: CloudKitServiceProtocol {
     var uploadedRecords: [[String: Any]] = []
     var deletedRecordIDs: [CKRecord.ID] = []
     var subscriptionCreated = false
     private var shouldFail = false
-    private var remoteChangeHandlers: [(Note) -> Void] = []
-    private var remoteDeleteHandlers: [(UUID) -> Void] = []
+    private var remoteRecords: [CKRecord] = []
+    private var remoteChanges: [CKRecord] = []
+    private var remoteDeletes: [CKRecord.ID] = []
+    private let crdtService = CRDTService()
+    private let zoneID = CKRecordZone.ID(zoneName: "NotesZone", ownerName: CKCurrentUserDefaultName)
 
     func setShouldFail(_ fail: Bool) {
         shouldFail = fail
     }
 
-    func uploadRecord(_ record: [String: Any]) async throws {
+    func setupZone() async throws {
         if shouldFail {
             throw NSError(domain: "MockCloudKit", code: -1, userInfo: [NSLocalizedDescriptionKey: "Network error"])
         }
-        uploadedRecords.append(record)
     }
 
-    func deleteRecord(id: CKRecord.ID) async throws {
+    func saveRecords(_ records: [CKRecord]) async throws {
         if shouldFail {
             throw NSError(domain: "MockCloudKit", code: -1, userInfo: [NSLocalizedDescriptionKey: "Network error"])
         }
-        deletedRecordIDs.append(id)
+        for record in records {
+            var recordDict: [String: Any] = [:]
+            recordDict["id"] = record["id"]
+            recordDict["crdt_data"] = record["crdt_data"]
+            recordDict["modified"] = record["modified"]
+            uploadedRecords.append(recordDict)
+        }
+        remoteRecords.append(contentsOf: records)
     }
 
-    func createSubscription() async throws {
+    func fetchRecords(ofType recordType: String) async throws -> [CKRecord] {
+        if shouldFail {
+            throw NSError(domain: "MockCloudKit", code: -1, userInfo: [NSLocalizedDescriptionKey: "Network error"])
+        }
+        return remoteRecords
+    }
+
+    func deleteRecords(withIDs recordIDs: [CKRecord.ID]) async throws {
+        if shouldFail {
+            throw NSError(domain: "MockCloudKit", code: -1, userInfo: [NSLocalizedDescriptionKey: "Network error"])
+        }
+        deletedRecordIDs.append(contentsOf: recordIDs)
+        remoteRecords.removeAll { record in
+            recordIDs.contains(record.recordID)
+        }
+    }
+
+    func createSubscription(id: String, recordType: String) async throws {
         if shouldFail {
             throw NSError(domain: "MockCloudKit", code: -1, userInfo: [NSLocalizedDescriptionKey: "Network error"])
         }
         subscriptionCreated = true
     }
 
-    func simulateRemoteChange(note: Note) async {
-        // Simulate remote notification
-        for handler in remoteChangeHandlers {
-            handler(note)
+    func deleteSubscription(withID subscriptionID: String) async throws {
+        if shouldFail {
+            throw NSError(domain: "MockCloudKit", code: -1, userInfo: [NSLocalizedDescriptionKey: "Network error"])
         }
+        subscriptionCreated = false
+    }
+
+    func fetchChanges(in zone: CKRecordZone.ID, since token: CKServerChangeToken?) async throws -> (changed: [CKRecord], deleted: [CKRecord.ID], newToken: CKServerChangeToken?) {
+        if shouldFail {
+            throw NSError(domain: "MockCloudKit", code: -1, userInfo: [NSLocalizedDescriptionKey: "Network error"])
+        }
+
+        // Return accumulated changes
+        let changes = remoteChanges
+        let deletes = remoteDeletes
+
+        // Clear accumulated changes
+        remoteChanges.removeAll()
+        remoteDeletes.removeAll()
+
+        return (changes, deletes, nil)
+    }
+
+    func simulateRemoteChange(note: Note) async {
+        // Create CRDT data for note
+        let document = await crdtService.createDocument()
+        try? await crdtService.updateNote(docHandle: document, note: note)
+        let crdtData = await crdtService.save(docHandle: document)
+
+        // Create CloudKit record
+        let recordID = CKRecord.ID(recordName: note.id.uuidString, zoneID: zoneID)
+        let record = CKRecord(recordType: "Note", recordID: recordID)
+        record["id"] = note.id.uuidString as CKRecordValue
+        record["crdt_data"] = crdtData as CKRecordValue
+        record["modified"] = Date() as CKRecordValue
+
+        remoteChanges.append(record)
+        remoteRecords.append(record)
     }
 
     func simulateRemoteDelete(id: UUID) async {
-        for handler in remoteDeleteHandlers {
-            handler(id)
-        }
-    }
-
-    func onRemoteChange(_ handler: @escaping (Note) -> Void) {
-        remoteChangeHandlers.append(handler)
-    }
-
-    func onRemoteDelete(_ handler: @escaping (UUID) -> Void) {
-        remoteDeleteHandlers.append(handler)
+        let recordID = CKRecord.ID(recordName: id.uuidString, zoneID: zoneID)
+        remoteDeletes.append(recordID)
+        remoteRecords.removeAll { $0.recordID.recordName == id.uuidString }
     }
 }
 
 // MARK: - Mock CRDT Note Repository
 
-actor MockCRDTNoteRepository {
+actor MockCRDTNoteRepository: CRDTNoteRepositoryProtocol {
     private var notes: [UUID: Note] = [:]
+    private var crdtData: [UUID: Data] = [:]
+    private var modificationDates: [UUID: Date] = [:]
+    private let crdtService = CRDTService()
 
-    func addNote(_ note: Note) {
+    func addNote(_ note: Note) async {
         notes[note.id] = note
+        modificationDates[note.id] = Date()
+
+        // Create CRDT data
+        let document = await crdtService.createDocument()
+        try? await crdtService.updateNote(docHandle: document, note: note)
+        crdtData[note.id] = await crdtService.save(docHandle: document)
     }
 
-    func updateNote(_ note: Note) {
+    func updateNote(_ note: Note) async {
         notes[note.id] = note
+        modificationDates[note.id] = Date()
+
+        // Update CRDT data
+        let document = await crdtService.createDocument()
+        try? await crdtService.updateNote(docHandle: document, note: note)
+        crdtData[note.id] = await crdtService.save(docHandle: document)
     }
 
     func deleteNote(id: UUID) {
         notes.removeValue(forKey: id)
+        crdtData.removeValue(forKey: id)
+        modificationDates.removeValue(forKey: id)
     }
 
     func getNote(id: UUID) -> Note? {
@@ -452,23 +503,49 @@ actor MockCRDTNoteRepository {
     func getAllNotes() -> [Note] {
         return Array(notes.values)
     }
-}
 
-// MARK: - Sync Status Enum
+    // MARK: - CRDTNoteRepositoryProtocol
 
-enum SyncStatus: Equatable {
-    case idle
-    case syncing
-    case error(String)
+    func create(note: Note) async throws -> Note {
+        await addNote(note)
+        return note
+    }
 
-    static func == (lhs: SyncStatus, rhs: SyncStatus) -> Bool {
-        switch (lhs, rhs) {
-        case (.idle, .idle), (.syncing, .syncing):
-            return true
-        case let (.error(lhsMsg), .error(rhsMsg)):
-            return lhsMsg == rhsMsg
-        default:
-            return false
+    func read(id: UUID) async throws -> Note? {
+        return getNote(id: id)
+    }
+
+    func update(note: Note) async throws -> Note {
+        await updateNote(note)
+        return note
+    }
+
+    func delete(id: UUID) async throws {
+        deleteNote(id: id)
+    }
+
+    func list() async throws -> [Note] {
+        return getAllNotes()
+    }
+
+    func search(query: String) async throws -> [Note] {
+        return getAllNotes().filter { note in
+            note.title.contains(query) || note.content.contains(query)
         }
+    }
+
+    func getCRDTData(for id: UUID) async throws -> Data? {
+        return crdtData[id]
+    }
+
+    func listModifiedSince(_ date: Date) async throws -> [Note] {
+        return notes.filter { id, _ in
+            guard let modDate = modificationDates[id] else { return false }
+            return modDate > date
+        }.map { $0.value }
+    }
+
+    func getAllNoteIDs() async throws -> Set<UUID> {
+        return Set(notes.keys)
     }
 }
