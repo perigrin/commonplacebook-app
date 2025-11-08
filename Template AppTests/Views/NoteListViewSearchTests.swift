@@ -342,6 +342,51 @@ final class NoteListViewSearchTests: XCTestCase {
         XCTAssertTrue(notes.contains(where: { $0.id == note2.id }))
     }
 
+    // MARK: - Race Condition Tests
+
+    func testSearchHandlesRapidSearchChanges() async throws {
+        // GIVEN notes with different load times simulating async repository access
+        let note1 = createTestNote(title: "First Result")
+        let note2 = createTestNote(title: "Second Result")
+        let note3 = createTestNote(title: "Third Result")
+
+        let slowRepository = SlowLoadingMockRepository()
+        await slowRepository.addNote(note1, loadDelay: 300_000_000) // 300ms
+        await slowRepository.addNote(note2, loadDelay: 100_000_000) // 100ms
+        await slowRepository.addNote(note3, loadDelay: 50_000_000)  // 50ms
+
+        let searchEngine = MockNoteListSearchEngine()
+        let viewModel = SearchViewModel(
+            searchEngine: searchEngine,
+            repository: slowRepository
+        )
+
+        // WHEN triggering rapid successive searches
+        // First search returns note1 (slow to load from repository)
+        await searchEngine.setMockResults([
+            SearchResult(noteId: note1.id, relevance: 0.9)
+        ])
+        viewModel.query = "first"
+        try await Task.sleep(nanoseconds: 600_000_000) // Wait for debounce
+
+        // Second search returns note3 (fast to load from repository)
+        // This creates potential for race: note3 loads quickly, but note1 might still be loading
+        await searchEngine.setMockResults([
+            SearchResult(noteId: note3.id, relevance: 0.95)
+        ])
+        viewModel.query = "third"
+        try await Task.sleep(nanoseconds: 600_000_000) // Wait for debounce
+
+        // Wait for all async loads to complete
+        try await Task.sleep(nanoseconds: 400_000_000)
+
+        // THEN only the latest search results should be present
+        // SearchViewModel's generation counter prevents stale results from earlier search
+        // SearchResultsListView's generation counter prevents stale note loads from updating UI
+        XCTAssertEqual(viewModel.results.count, 1, "Should have one result from latest search")
+        XCTAssertEqual(viewModel.results.first?.noteId, note3.id, "Should show result from latest search, not stale results from cancelled search")
+    }
+
     // MARK: - Helper Methods
 
     private func createTestNote(title: String) -> Note {
@@ -405,5 +450,57 @@ actor MockNoteListSearchEngine: VectorSearchEngineProtocol {
 
     func rebuild() async {
         // No-op for UI tests
+    }
+}
+
+actor SlowLoadingMockRepository: NoteRepository {
+    private var notes: [UUID: Note] = [:]
+    private var loadDelays: [UUID: UInt64] = [:]
+
+    func addNote(_ note: Note, loadDelay: UInt64) {
+        notes[note.id] = note
+        loadDelays[note.id] = loadDelay
+    }
+
+    func create(note: Note) async throws -> Note {
+        notes[note.id] = note
+        return note
+    }
+
+    func read(id: UUID) async throws -> Note {
+        // Simulate delay for this note
+        if let delay = loadDelays[id] {
+            try await Task.sleep(nanoseconds: delay)
+        }
+
+        guard let note = notes[id] else {
+            throw NSError(domain: "test", code: 404, userInfo: [NSLocalizedDescriptionKey: "Note not found"])
+        }
+        return note
+    }
+
+    func update(note: Note) async throws -> Note {
+        notes[note.id] = note
+        return note
+    }
+
+    func delete(id: UUID) async throws {
+        notes.removeValue(forKey: id)
+    }
+
+    func listAll() async throws -> [Note] {
+        return Array(notes.values)
+    }
+
+    func markAsIndexed(id: UUID) async throws {
+        // No-op for tests
+    }
+
+    func markAsNotIndexed(id: UUID) async throws {
+        // No-op for tests
+    }
+
+    func needsIndexing() async throws -> [Note] {
+        return []
     }
 }
