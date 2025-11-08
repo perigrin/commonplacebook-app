@@ -12,6 +12,7 @@ class EmbeddingBackgroundService {
 
     @Published private(set) var progress: Float = 1.0
     @Published private(set) var isProcessing: Bool = false
+    @Published private(set) var embeddingsCount: Int = 0
 
     // MARK: - Private Properties
 
@@ -21,12 +22,14 @@ class EmbeddingBackgroundService {
     private let storageDirectory: URL
     private let batchSize: Int
     private let maxRetries: Int = 3
+    private let maxEmbeddingsSize: Int
 
     private var processingQueue: [UUID] = []
     private var processedNotes: Set<UUID> = []
     private var successfulNotes: Set<UUID> = []
     private var failedNotes: [UUID: Int] = [:] // noteId -> retry count
     private var embeddings: [UUID: [Float]] = [:]
+    private var embeddingsOrder: [UUID] = [] // Track insertion order for LRU eviction
     private var processingTask: Task<Void, Never>?
     private var totalNotesToProcess: Int = 0
     private var notesProcessedCount: Int = 0
@@ -37,12 +40,14 @@ class EmbeddingBackgroundService {
          noteRepository: NoteRepository,
          searchEngine: VectorSearchEngine,
          storageDirectory: URL? = nil,
-         batchSize: Int = 10) {
+         batchSize: Int = 10,
+         maxEmbeddingsSize: Int = 1000) {
         self.embeddingService = embeddingService
         self.noteRepository = noteRepository
         self.searchEngine = searchEngine
         self.storageDirectory = storageDirectory ?? Self.defaultStorageDirectory()
         self.batchSize = batchSize
+        self.maxEmbeddingsSize = maxEmbeddingsSize
 
         // Load existing embeddings
         Task {
@@ -173,12 +178,32 @@ class EmbeddingBackgroundService {
         // Apply batch updates atomically on MainActor
         await MainActor.run {
             for (noteId, embedding) in batchUpdates {
+                // Evict oldest if at capacity and this is a new note
+                if embeddings.count >= maxEmbeddingsSize && embeddings[noteId] == nil {
+                    if let oldestId = embeddingsOrder.first {
+                        embeddings.removeValue(forKey: oldestId)
+                        embeddingsOrder.removeFirst()
+                    }
+                }
+
+                // Store embedding
                 embeddings[noteId] = embedding
+
+                // Update insertion order (remove if exists, add to end)
+                if let existingIndex = embeddingsOrder.firstIndex(of: noteId) {
+                    embeddingsOrder.remove(at: existingIndex)
+                }
+                embeddingsOrder.append(noteId)
+
+                // Update tracking
                 processedNotes.insert(noteId)
                 successfulNotes.insert(noteId)
                 notesProcessedCount += 1
                 failedNotes.removeValue(forKey: noteId)
             }
+
+            // Update count
+            embeddingsCount = embeddings.count
         }
 
         // Index all successful embeddings in search engine
@@ -246,20 +271,34 @@ class EmbeddingBackgroundService {
             var loadedEmbeddings: [UUID: [Float]] = [:]
             var loadedProcessed: Set<UUID> = []
             var loadedSuccessful: Set<UUID> = []
+            var loadedOrder: [UUID] = []
 
             for (key, value) in data {
                 if let uuid = UUID(uuidString: key) {
                     loadedEmbeddings[uuid] = value
                     loadedProcessed.insert(uuid)
                     loadedSuccessful.insert(uuid)
+                    loadedOrder.append(uuid)
                 }
+            }
+
+            // If loaded embeddings exceed max size, keep only the most recent ones
+            if loadedEmbeddings.count > await MainActor.run({ maxEmbeddingsSize }) {
+                let maxSize = await MainActor.run({ maxEmbeddingsSize })
+                let toRemove = loadedOrder.prefix(loadedEmbeddings.count - maxSize)
+                for uuid in toRemove {
+                    loadedEmbeddings.removeValue(forKey: uuid)
+                }
+                loadedOrder = Array(loadedOrder.suffix(maxSize))
             }
 
             await MainActor.run {
                 embeddings = loadedEmbeddings
+                embeddingsOrder = loadedOrder
                 processedNotes = loadedProcessed
                 successfulNotes = loadedSuccessful
                 notesProcessedCount = loadedSuccessful.count
+                embeddingsCount = loadedEmbeddings.count
             }
 
             // Re-index all loaded embeddings

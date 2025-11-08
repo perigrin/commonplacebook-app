@@ -316,6 +316,65 @@ final class EmbeddingBackgroundServiceTests: XCTestCase {
         XCTAssertGreaterThan(indexed.count, 0, "Should have processed note after retry")
     }
 
+    // MARK: - Memory Management Tests
+
+    func testEmbeddingMemoryBounded() async throws {
+        // GIVEN service configured to process many notes
+        let maxEmbeddings = 1000
+        let notesToProcess = 1500
+
+        // Add notes to repository
+        var noteIds: [UUID] = []
+        for i in 0..<notesToProcess {
+            let note = Note(
+                id: UUID(),
+                created: Date(),
+                device: "test",
+                location: nil,
+                content: "Test note content \(i)",
+                title: "Test Note \(i)",
+                backlinks: [],
+                unknownFrontmatterFields: [:]
+            )
+            await mockNoteRepository.addNote(note)
+            noteIds.append(note.id)
+        }
+
+        // WHEN processing all notes
+        for noteId in noteIds {
+            await service.queueNote(id: noteId)
+        }
+
+        await service.start()
+
+        // Wait for all to process (generous timeout)
+        try await Task.sleep(nanoseconds: 5_000_000_000) // 5 seconds
+
+        await service.stop()
+
+        // THEN in-memory embeddings count should be bounded to maxEmbeddings
+        let embeddingsCount = await service.embeddingsCount
+        XCTAssertLessThanOrEqual(embeddingsCount, maxEmbeddings,
+                                "In-memory embeddings should be bounded to \(maxEmbeddings), but got \(embeddingsCount)")
+
+        // AND all notes should still be marked as processed
+        // (verify by trying to requeue - they should be skipped)
+        let initialCallCount = await mockEmbeddingService.generateCallCount
+
+        // Try to requeue first 10 notes
+        for noteId in noteIds.prefix(10) {
+            await service.queueNote(id: noteId)
+        }
+
+        await service.start()
+        try await Task.sleep(nanoseconds: 200_000_000) // 200ms
+        await service.stop()
+
+        let finalCallCount = await mockEmbeddingService.generateCallCount
+        XCTAssertEqual(finalCallCount, initialCallCount,
+                      "Should not reprocess notes even if embeddings were evicted from memory")
+    }
+
     // MARK: - Integration Tests
 
     func testIntegrationWithSearchEngine() async throws {
