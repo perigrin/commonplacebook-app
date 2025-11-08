@@ -330,6 +330,9 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
                 continue
             }
 
+            markActive(id: id)
+            defer { markInactive(id: id) }
+
             do {
                 // Load document (will use cache if available)
                 let document: DocHandle
@@ -372,6 +375,9 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
             guard let id = UUID(uuidString: row[idColumn]) else {
                 continue
             }
+
+            markActive(id: id)
+            defer { markInactive(id: id) }
 
             do {
                 let document: DocHandle
@@ -443,6 +449,9 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
     }
 
     private func importFileChange(fileURL: URL, id: UUID) async throws {
+        markActive(id: id)
+        defer { markInactive(id: id) }
+
         // Read file content
         guard let fileContent = try? String(contentsOf: fileURL, encoding: .utf8) else {
             return
@@ -564,6 +573,9 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
 
     /// Save CRDT data for a note (for persisting reconstructed data)
     func saveCRDTData(for id: UUID, data: Data) async throws {
+        markActive(id: id)
+        defer { markInactive(id: id) }
+
         let query = notesTable.filter(idColumn == id.uuidString)
 
         // Verify note exists

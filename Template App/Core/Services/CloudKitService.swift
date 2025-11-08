@@ -48,24 +48,36 @@ actor CloudKitService: CloudKitServiceProtocol {
             operation.savePolicy = .changedKeys
             operation.qualityOfService = .userInitiated
 
-            // Handle partial errors
+            // Add timeout configuration
+            operation.configuration = CKOperation.Configuration()
+            operation.configuration.timeoutIntervalForRequest = 30
+            operation.configuration.timeoutIntervalForResource = 120
+
+            // Handle partial errors - use lock for thread safety
             var saveErrors: [CKRecord.ID: Error] = [:]
+            let lock = NSLock()
 
             operation.perRecordCompletionBlock = { record, error in
                 if let error = error {
+                    lock.lock()
                     saveErrors[record.recordID] = error
+                    lock.unlock()
                 }
             }
 
             operation.modifyRecordsCompletionBlock = { _, _, error in
                 if let error = error {
                     // Check if all records failed or just some
-                    if saveErrors.count == records.count {
+                    lock.lock()
+                    let errorCount = saveErrors.count
+                    lock.unlock()
+
+                    if errorCount == records.count {
                         // Total failure
                         continuation.resume(throwing: error)
-                    } else if !saveErrors.isEmpty {
+                    } else if errorCount > 0 {
                         // Partial failure - log but continue
-                        print("Warning: \(saveErrors.count) records failed to save")
+                        print("Warning: \(errorCount) records failed to save")
                         // Could track these for retry
                         continuation.resume()
                     } else {
@@ -98,6 +110,7 @@ actor CloudKitService: CloudKitServiceProtocol {
     private func fetchRecordsBatch(query: CKQuery, cursor: CKQueryOperation.Cursor?) async throws -> ([CKRecord], CKQueryOperation.Cursor?) {
         return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<([CKRecord], CKQueryOperation.Cursor?), Error>) in
             var batchRecords: [CKRecord] = []
+            let lock = NSLock()
 
             let operation: CKQueryOperation
             if let cursor = cursor {
@@ -107,15 +120,25 @@ actor CloudKitService: CloudKitServiceProtocol {
                 operation.zoneID = recordZone.zoneID
             }
 
+            // Add timeout configuration
+            operation.configuration = CKOperation.Configuration()
+            operation.configuration.timeoutIntervalForRequest = 30
+            operation.configuration.timeoutIntervalForResource = 120
+
             operation.recordFetchedBlock = { record in
+                lock.lock()
                 batchRecords.append(record)
+                lock.unlock()
             }
 
             operation.queryCompletionBlock = { cursor, error in
                 if let error = error {
                     continuation.resume(throwing: error)
                 } else {
-                    continuation.resume(returning: (batchRecords, cursor))
+                    lock.lock()
+                    let records = batchRecords
+                    lock.unlock()
+                    continuation.resume(returning: (records, cursor))
                 }
             }
 
@@ -142,6 +165,11 @@ actor CloudKitService: CloudKitServiceProtocol {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             let operation = CKModifyRecordsOperation(recordsToSave: nil, recordIDsToDelete: recordIDs)
             operation.qualityOfService = .userInitiated
+
+            // Add timeout configuration
+            operation.configuration = CKOperation.Configuration()
+            operation.configuration.timeoutIntervalForRequest = 30
+            operation.configuration.timeoutIntervalForResource = 120
 
             operation.modifyRecordsCompletionBlock = { _, _, error in
                 if let error = error {
@@ -174,18 +202,30 @@ actor CloudKitService: CloudKitServiceProtocol {
         var deletedRecordIDs: [CKRecord.ID] = []
         var serverChangeToken: CKServerChangeToken?
 
+        // Use lock for thread safety
+        let lock = NSLock()
+
         let configuration = CKFetchRecordZoneChangesOperation.ZoneConfiguration()
         configuration.previousServerChangeToken = token
 
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             let operation = CKFetchRecordZoneChangesOperation(recordZoneIDs: [zone], configurationsByRecordZoneID: [zone: configuration])
 
+            // Add timeout configuration
+            operation.configuration = CKOperation.Configuration()
+            operation.configuration.timeoutIntervalForRequest = 30
+            operation.configuration.timeoutIntervalForResource = 120
+
             operation.recordChangedBlock = { record in
+                lock.lock()
                 changedRecords.append(record)
+                lock.unlock()
             }
 
             operation.recordWithIDWasDeletedBlock = { recordID, _ in
+                lock.lock()
                 deletedRecordIDs.append(recordID)
+                lock.unlock()
             }
 
             var fetchError: Error?
@@ -194,7 +234,9 @@ actor CloudKitService: CloudKitServiceProtocol {
                 if let error = error {
                     fetchError = error
                 } else {
+                    lock.lock()
                     serverChangeToken = token
+                    lock.unlock()
                 }
             }
 
