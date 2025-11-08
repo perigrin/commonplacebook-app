@@ -35,6 +35,9 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
     private var cacheOrder: [UUID] = []
     private var activeDocuments: Set<UUID> = []  // Track documents in use
 
+    // Track document usage with reference counts
+    private var documentRefCounts: [UUID: Int] = [:]
+
     // File system watcher
     private var fileWatcher: DispatchSourceFileSystemObject?
 
@@ -115,14 +118,34 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
             return false
         }
 
-        // Try to load it to verify structure
+        // Add timeout for validation to prevent blocking
         do {
-            let doc = try await crdtService.load(data: data)
-            _ = try await crdtService.readNote(docHandle: doc)
+            try await withTimeout(seconds: 5) {
+                let doc = try await crdtService.load(data: data)
+                _ = try await crdtService.readNote(docHandle: doc)
+            }
             return true
         } catch {
             print("CRDT data validation failed: \(error)")
             return false
+        }
+    }
+
+    // Helper function for timeout
+    private func withTimeout<T>(seconds: Double, operation: () async throws -> T) async throws -> T {
+        return try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask {
+                try await operation()
+            }
+
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                throw RepositoryError.operationTimeout
+            }
+
+            let result = try await group.next()!
+            group.cancelAll()
+            return result
         }
     }
 
@@ -144,32 +167,41 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
             return
         }
 
-        var shouldCloseDescriptor = true
+        // Track whether we successfully created the watcher
+        var watcherCreated = false
+
         defer {
-            if shouldCloseDescriptor {
+            // Only close if we failed to create watcher
+            if !watcherCreated {
                 close(descriptor)
             }
         }
 
         let source = DispatchSource.makeFileSystemObjectSource(
             fileDescriptor: descriptor,
-            eventMask: [.write, .delete, .rename],
+            eventMask: .write,
             queue: DispatchQueue.global(qos: .background)
         )
 
         source.setEventHandler { [weak self] in
             Task {
-                try? await self?.importExternalChanges()
+                await self?.importExternalChanges()
             }
         }
 
         source.setCancelHandler {
+            // This owns the descriptor now, will close it when cancelled
             close(descriptor)
         }
 
+        // Activate the source first
         source.resume()
+
+        // Then assign to property - this transfers ownership
         self.fileWatcher = source
-        shouldCloseDescriptor = false  // Transfer ownership to fileWatcher
+
+        // Mark successful creation AFTER assignment
+        watcherCreated = true
     }
 
     // MARK: - LRU Cache Management
@@ -193,35 +225,24 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
 
             guard let oldestId = cacheOrder.last else { break }
 
-            // Don't evict active documents
-            if activeDocuments.contains(oldestId) {
+            // Check if document has active references
+            if let refCount = documentRefCounts[oldestId], refCount > 0 {
                 // Move to front to try next time
                 cacheOrder.removeLast()
                 cacheOrder.insert(oldestId, at: 0)
                 continue
             }
 
-            // Evict this document
+            // Safe to evict - no active references
             cacheOrder.removeLast()
             documentCache.removeValue(forKey: oldestId)
         }
 
-        // Emergency eviction if we still can't evict anything
-        if documentCache.count > maxCacheSize && attempts >= maxAttempts {
-            print("CRITICAL: Cache overflow (\(documentCache.count) documents), forcing eviction")
-
-            // Calculate how many to evict
-            let overCount = documentCache.count - maxCacheSize
-            let toEvict = min(overCount, cacheOrder.count)
-
-            // Force evict oldest documents, even if active
-            for _ in 0..<toEvict {
-                guard let oldestId = cacheOrder.last else { break }
-                cacheOrder.removeLast()
-                documentCache.removeValue(forKey: oldestId)
-                activeDocuments.remove(oldestId)
-                print("Force-evicted active document: \(oldestId)")
-            }
+        // If still over limit, warn but DON'T force evict
+        if documentCache.count > maxCacheSize {
+            print("WARNING: Cache size (\(documentCache.count)) exceeds limit (\(maxCacheSize))")
+            print("Active references: \(documentRefCounts.filter { $0.value > 0 }.count) documents")
+            // Consider increasing maxCacheSize dynamically here
         }
     }
 
@@ -231,11 +252,16 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
     }
 
     private func markActive(id: UUID) {
-        activeDocuments.insert(id)
+        documentRefCounts[id, default: 0] += 1
     }
 
     private func markInactive(id: UUID) {
-        activeDocuments.remove(id)
+        if let count = documentRefCounts[id], count > 0 {
+            documentRefCounts[id] = count - 1
+            if count == 1 {
+                documentRefCounts.removeValue(forKey: id)
+            }
+        }
     }
 
     // MARK: - NoteRepository Protocol
@@ -387,13 +413,20 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
     }
 
     func list() async throws -> [Note] {
-        // For compatibility - warn if loading large collections
         let totalCount = try count()
-        if totalCount > 1000 {
-            print("Warning: Loading \(totalCount) notes into memory. Consider using list(limit:offset:) for large collections")
+
+        // Hard limit to prevent memory exhaustion
+        let maxLoad = 5000
+        if totalCount > maxLoad {
+            throw RepositoryError.collectionTooLarge(
+                "Collection has \(totalCount) notes, maximum \(maxLoad) allowed. Use list(limit:offset:) for pagination."
+            )
         }
 
-        // Use paginated version with no limit
+        if totalCount > 1000 {
+            print("Warning: Loading \(totalCount) notes into memory. Consider using list(limit:offset:)")
+        }
+
         return try await list(limit: totalCount, offset: 0)
     }
 

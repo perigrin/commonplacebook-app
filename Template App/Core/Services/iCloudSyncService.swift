@@ -25,6 +25,9 @@ actor iCloudSyncService {
     }
     private var syncState = SyncState.idle
 
+    // Cache for deleted note IDs to prevent O(n²) tombstone queries
+    private var cachedDeletedIDs: Set<UUID>?
+
     // Change tracking
     private var lastSyncDate: Date?
     private var _serverChangeToken: CKServerChangeToken?
@@ -69,7 +72,8 @@ actor iCloudSyncService {
             } else {
                 UserDefaults.standard.removeObject(forKey: "icloud_sync_change_token")
             }
-            UserDefaults.standard.synchronize() // Force immediate write
+            // UserDefaults auto-persists, synchronize() not needed
+            // Removing to prevent actor thread pool blocking
         }
     }
 
@@ -235,18 +239,29 @@ actor iCloudSyncService {
     }
 
     func syncNow() async {
+        // Check current state and create task atomically
+        let task: Task<Void, Never>
+
         switch syncState {
         case .idle:
-            let task = Task {
+            // Only create task if idle
+            task = Task {
                 await performSyncWithRetry()
             }
             syncState = .syncing(task: task)
-            await task.value
-            syncState = .idle
 
         case .syncing(let existingTask):
-            // Already syncing, wait for it
+            // Already syncing, just wait
             await existingTask.value
+            return
+        }
+
+        // Wait for the task we created
+        await task.value
+
+        // Reset to idle (only if we're still the active task)
+        if case .syncing(let activeTask) = syncState, activeTask === task {
+            syncState = .idle
         }
     }
 
@@ -274,6 +289,13 @@ actor iCloudSyncService {
     }
 
     private func performSync() async throws {
+        guard _isSyncing else { return }
+
+        print("Starting iCloud sync...")
+
+        // Clear cached deleted IDs for fresh sync
+        cachedDeletedIDs = nil
+
         statusSubject.send(.syncing)
 
         // Sync local changes to remote
@@ -307,6 +329,7 @@ actor iCloudSyncService {
             // First sync - use pagination to avoid memory exhaustion
             let batchSize = 100
             var offset = 0
+            var totalProcessed = 0
 
             repeat {
                 let batch = try await repository.list(limit: batchSize, offset: offset)
@@ -331,9 +354,20 @@ actor iCloudSyncService {
                     try await cloudKit.saveRecords(recordsToSave)
                 }
 
-                offset += batchSize
+                // Critical: Increment by ACTUAL batch size, not assumed size
+                let batchCount = batch.count
+                totalProcessed += batchCount
+                offset += batchCount
+
+                print("Synced \(totalProcessed) notes so far...")
+
+                // Break if we got fewer than requested (end of data)
+                if batchCount < batchSize {
+                    break
+                }
             } while true
 
+            print("First sync complete: synced \(totalProcessed) notes")
             return
         }
 
@@ -464,6 +498,13 @@ actor iCloudSyncService {
     }
 
     private func mergeRemoteNote(id: UUID, remoteDoc: DocHandle, remoteCRDTData: Data) async throws {
+        // Load deleted IDs once per sync
+        if cachedDeletedIDs == nil {
+            let lastWeek = Date().addingTimeInterval(-7 * 24 * 60 * 60)
+            cachedDeletedIDs = Set(try repository.getDeletedSince(lastWeek))
+            print("Cached \(cachedDeletedIDs!.count) recently deleted note IDs")
+        }
+
         // Load LOCAL CRDT document from repository
         var localCRDTData = try await repository.getCRDTData(for: id)
 
@@ -482,9 +523,8 @@ actor iCloudSyncService {
                 // Continue with merge using reconstructed data
                 localCRDTData = reconstructedData
             } else {
-                // Check if this was deleted locally
-                let deletedIDs = try await repository.getDeletedSince(Date.distantPast)
-                if deletedIDs.contains(id) {
+                // Check cached deleted IDs (O(1) lookup instead of O(n) query)
+                if cachedDeletedIDs!.contains(id) {
                     print("Note \(id) was deleted locally, skipping remote resurrection")
                     return
                 }
@@ -518,7 +558,16 @@ actor iCloudSyncService {
             while !Task.isCancelled {
                 guard let self = self else { break }
                 let interval = self.backgroundSyncInterval
-                try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+
+                do {
+                    try await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+                } catch {
+                    // Task was cancelled during sleep
+                    break
+                }
+
+                // Check cancellation before expensive operation
+                guard !Task.isCancelled else { break }
 
                 // Use syncIfActive which internally uses syncNow with retry
                 await self.syncIfActive()

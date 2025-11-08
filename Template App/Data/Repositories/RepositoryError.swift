@@ -10,6 +10,8 @@ enum RepositoryError: Error, LocalizedError {
     case storageError(String)
     case concurrencyError(String)
     case invalidCRDTData
+    case collectionTooLarge(String)
+    case operationTimeout
 
     var errorDescription: String? {
         switch self {
@@ -23,6 +25,10 @@ enum RepositoryError: Error, LocalizedError {
             return "Concurrency error: \(detail)"
         case .invalidCRDTData:
             return "Invalid CRDT data: data failed validation checks"
+        case .collectionTooLarge(let message):
+            return "Collection too large: \(message)"
+        case .operationTimeout:
+            return "Operation timed out"
         }
     }
 }
