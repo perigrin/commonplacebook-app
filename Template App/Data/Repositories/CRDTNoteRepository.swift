@@ -114,7 +114,17 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
 
     private func startFileSystemWatcher() {
         let descriptor = open(notesDirectory.path, O_EVTONLY)
-        guard descriptor != -1 else { return }
+        guard descriptor != -1 else {
+            print("Failed to open file descriptor for watching")
+            return
+        }
+
+        // Add defer to ensure cleanup on error
+        defer {
+            if fileWatcher == nil {
+                close(descriptor)
+            }
+        }
 
         let source = DispatchSource.makeFileSystemObjectSource(
             fileDescriptor: descriptor,
@@ -146,7 +156,12 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
         cacheOrder.append(id)
 
         // Evict old entries, but skip active documents
-        while documentCache.count > maxCacheSize {
+        var attempts = 0
+        let maxAttempts = cacheOrder.count + 1  // Prevent infinite loop
+
+        while documentCache.count > maxCacheSize && attempts < maxAttempts {
+            attempts += 1
+
             if let oldest = cacheOrder.first, !activeDocuments.contains(oldest) {
                 documentCache.removeValue(forKey: oldest)
                 cacheOrder.removeFirst()
@@ -157,6 +172,11 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
             } else {
                 break
             }
+        }
+
+        // If we still can't evict anything, log warning
+        if documentCache.count > maxCacheSize && attempts >= maxAttempts {
+            print("WARNING: Cache size (\(documentCache.count)) exceeds limit (\(maxCacheSize)) with all active documents")
         }
     }
 

@@ -18,22 +18,51 @@ actor iCloudSyncService {
     private var backgroundSyncTask: Task<Void, Never>?
     private var activeSyncTask: Task<Void, Never>?
     private var accountStatusObserver: NSObjectProtocol?
+    private let syncLock = NSLock()
 
     // Change tracking
     private var lastSyncDate: Date?
+    private var _serverChangeToken: CKServerChangeToken?
+    private var tokenLoaded = false
+
+    private func loadTokenIfNeeded() {
+        guard !tokenLoaded else { return }
+        tokenLoaded = true
+
+        guard let data = UserDefaults.standard.data(forKey: "icloud_sync_change_token") else {
+            _serverChangeToken = nil
+            return
+        }
+
+        do {
+            _serverChangeToken = try NSKeyedUnarchiver.unarchivedObject(
+                ofClass: CKServerChangeToken.self,
+                from: data
+            )
+        } catch {
+            print("Corrupted change token, clearing: \(error)")
+            UserDefaults.standard.removeObject(forKey: "icloud_sync_change_token")
+            _serverChangeToken = nil
+        }
+    }
+
     private var serverChangeToken: CKServerChangeToken? {
         get {
-            guard let data = UserDefaults.standard.data(forKey: "icloud_sync_change_token") else {
-                return nil
-            }
-            return try? NSKeyedUnarchiver.unarchivedObject(ofClass: CKServerChangeToken.self, from: data)
+            loadTokenIfNeeded()
+            return _serverChangeToken
         }
         set {
-            if let newValue = newValue {
-                let data = try? NSKeyedArchiver.archivedData(withRootObject: newValue, requiringSecureCoding: true)
-                UserDefaults.standard.set(data, forKey: "icloud_sync_change_token")
-            } else {
-                UserDefaults.standard.removeObject(forKey: "icloud_sync_change_token")
+            _serverChangeToken = newValue
+            Task { @MainActor in
+                if let token = newValue {
+                    let data = try? NSKeyedArchiver.archivedData(
+                        withRootObject: token,
+                        requiringSecureCoding: true
+                    )
+                    UserDefaults.standard.set(data, forKey: "icloud_sync_change_token")
+                } else {
+                    UserDefaults.standard.removeObject(forKey: "icloud_sync_change_token")
+                }
             }
         }
     }
@@ -196,51 +225,64 @@ actor iCloudSyncService {
     }
 
     func syncNow() async {
-        // Prevent concurrent syncs
+        syncLock.lock()
         if let existing = activeSyncTask, !existing.isCancelled {
+            syncLock.unlock()
             await existing.value
             return
         }
 
         activeSyncTask = Task {
-            await performSync()
-            activeSyncTask = nil  // Move here, not in defer
+            await performSyncWithRetry()
         }
+        let task = activeSyncTask!
+        syncLock.unlock()
 
-        await activeSyncTask?.value
+        await task.value
+
+        syncLock.lock()
+        activeSyncTask = nil
+        syncLock.unlock()
     }
 
-    private func performSync() async {
-        do {
-            statusSubject.send(.syncing)
-
-            // Sync local changes to remote
-            try await pushLocalChanges()
-
-            // Sync remote changes to local
-            try await pullRemoteChanges()
-
-            // Update last sync timestamp
-            lastSyncDate = Date()
-
-            // Reset retry counter on success
-            retryCount = 0
-            statusSubject.send(.idle)
-        } catch {
-            print("Sync error: \(error)")
-            statusSubject.send(.error(error.localizedDescription))
-
-            // Retry with exponential backoff up to max retries
-            if _isSyncing && retryCount < maxRetries {
-                retryCount += 1
-                let delay = min(60.0, pow(2.0, Double(retryCount)) * 5.0) // Cap at 60 seconds
-                try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-                await performSync()
-            } else if retryCount >= maxRetries {
-                statusSubject.send(.error("Sync failed after \(maxRetries) attempts"))
+    private func performSyncWithRetry() async {
+        var attempt = 0
+        while attempt < maxRetries {
+            do {
+                try await performSync()
                 retryCount = 0
+                return
+            } catch {
+                attempt += 1
+                if attempt >= maxRetries {
+                    print("Max retries reached, giving up")
+                    statusSubject.send(.error("Sync failed after \(maxRetries) attempts"))
+                    retryCount = 0
+                    return
+                }
+
+                let delay = min(60.0, pow(2.0, Double(attempt)) * 5.0)
+                print("Sync failed, retrying in \(delay)s (attempt \(attempt)/\(maxRetries))")
+                try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
             }
         }
+    }
+
+    private func performSync() async throws {
+        statusSubject.send(.syncing)
+
+        // Sync local changes to remote
+        try await pushLocalChanges()
+
+        // Sync remote changes to local
+        try await pullRemoteChanges()
+
+        // Update last sync timestamp
+        lastSyncDate = Date()
+
+        // Reset retry counter on success
+        retryCount = 0
+        statusSubject.send(.idle)
     }
 
     // MARK: - Remote Subscription
@@ -360,8 +402,16 @@ actor iCloudSyncService {
 
     private func processRemoteRecord(_ record: CKRecord) async throws {
         guard let idString = record["id"] as? String,
-              let id = UUID(uuidString: idString),
-              let remoteCRDTData = record["crdt_data"] as? Data else {
+              let id = UUID(uuidString: idString) else {
+            throw iCloudSyncError.invalidRecord
+        }
+
+        // Validate CRDT data size and structure
+        let maxCRDTSize = 10 * 1024 * 1024 // 10MB limit
+        guard let remoteCRDTData = record["crdt_data"] as? Data,
+              remoteCRDTData.count > 0,
+              remoteCRDTData.count < maxCRDTSize else {
+            print("Invalid CRDT data size: \(String(describing: (record["crdt_data"] as? Data)?.count))")
             throw iCloudSyncError.invalidRecord
         }
 
@@ -380,32 +430,35 @@ actor iCloudSyncService {
     }
 
     private func mergeRemoteNote(id: UUID, remoteDoc: DocHandle, remoteCRDTData: Data) async throws {
-        // Load LOCAL CRDT document from repository (CRITICAL FIX)
-        guard let localCRDTData = try await repository.getCRDTData(for: id) else {
-            // CRITICAL: Don't just use remote! Reconstruct local CRDT from note content
+        // Load LOCAL CRDT document from repository
+        var localCRDTData = try await repository.getCRDTData(for: id)
+
+        if localCRDTData == nil {
+            print("WARNING: Missing local CRDT data for \(id). Attempting reconstruction.")
+
             if let localNote = try await repository.read(id: id) {
-                // Create CRDT from current note state
                 let localDoc = await crdtService.createDocument()
                 try await crdtService.updateNote(docHandle: localDoc, note: localNote)
-
-                // CRITICAL: Save the reconstructed CRDT data to prevent repeated reconstruction
                 let reconstructedData = await crdtService.save(docHandle: localDoc)
+
+                // Persist reconstructed data
                 try await repository.saveCRDTData(for: id, data: reconstructedData)
 
-                // Now merge properly
-                let merged = try await crdtService.merge(doc1: localDoc, doc2: remoteDoc)
-                let mergedNote = try await crdtService.readNote(docHandle: merged)
-                _ = try await repository.update(note: mergedNote)
+                print("RECONSTRUCTED CRDT for \(id) - this may lose concurrent edits")
+                // Continue with merge using reconstructed data
+                localCRDTData = reconstructedData
             } else {
-                // Only use remote if no local note exists at all
+                // Truly missing - use remote
+                print("No local data at all for \(id), using remote version")
                 let remoteNote = try await crdtService.readNote(docHandle: remoteDoc)
-                _ = try await repository.update(note: remoteNote)
+                _ = try await repository.create(note: remoteNote)
+                try await repository.saveCRDTData(for: id, data: remoteCRDTData)
+                return
             }
-            return
         }
 
         // Load local CRDT document (preserves history)
-        let localDoc = try await crdtService.load(data: localCRDTData)
+        let localDoc = try await crdtService.load(data: localCRDTData!)
 
         // Merge via CRDT (conflict-free)
         let merged = try await crdtService.merge(doc1: localDoc, doc2: remoteDoc)
@@ -422,14 +475,9 @@ actor iCloudSyncService {
 
         backgroundSyncTask = Task { [weak self] in
             while !Task.isCancelled {
-                do {
-                    try await Task.sleep(nanoseconds: UInt64(self?.backgroundSyncInterval ?? 600 * 1_000_000_000))
-
-                    // Atomic check-and-sync within actor context
-                    await self?.syncIfActive()
-                } catch {
-                    break
-                }
+                guard let self = self else { break }
+                try? await Task.sleep(nanoseconds: UInt64(self.backgroundSyncInterval * 1_000_000_000))
+                await self.syncIfActive()
             }
         }
     }

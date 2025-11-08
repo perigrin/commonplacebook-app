@@ -30,8 +30,9 @@ actor CloudKitService: CloudKitServiceProtocol {
     func saveRecords(_ records: [CKRecord]) async throws {
         guard !records.isEmpty else { return }
 
-        // CloudKit limit is 400 records per operation - batch if needed
-        let batchSize = 400
+        // CloudKit limit is 400 records per operation - use 399 to stay safely under the boundary
+        // Using exactly 400 can be rejected at the limit boundary
+        let batchSize = 399
         let batches = stride(from: 0, to: records.count, by: batchSize).map {
             Array(records[$0..<min($0 + batchSize, records.count)])
         }
@@ -149,8 +150,9 @@ actor CloudKitService: CloudKitServiceProtocol {
     func deleteRecords(withIDs recordIDs: [CKRecord.ID]) async throws {
         guard !recordIDs.isEmpty else { return }
 
-        // CloudKit limit is 400 records per operation - batch if needed
-        let batchSize = 400
+        // CloudKit limit is 400 records per operation - use 399 to stay safely under the boundary
+        // Using exactly 400 can be rejected at the limit boundary
+        let batchSize = 399
         let batches = stride(from: 0, to: recordIDs.count, by: batchSize).map {
             Array(recordIDs[$0..<min($0 + batchSize, recordIDs.count)])
         }
