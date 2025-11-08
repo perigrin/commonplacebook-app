@@ -45,6 +45,12 @@ protocol CRDTNoteRepositoryProtocol: Actor {
     /// List all notes
     func list() async throws -> [Note]
 
+    /// List notes with pagination
+    func list(limit: Int, offset: Int) async throws -> [Note]
+
+    /// Get total count of notes
+    func count() throws -> Int
+
     /// Get CRDT data for a note (for syncing)
     func getCRDTData(for id: UUID) async throws -> Data?
 

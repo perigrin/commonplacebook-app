@@ -322,10 +322,25 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
     }
 
     func list() async throws -> [Note] {
-        // Load all notes efficiently in batch
+        // For compatibility - warn if loading large collections
+        let totalCount = try count()
+        if totalCount > 1000 {
+            print("Warning: Loading \(totalCount) notes into memory. Consider using list(limit:offset:) for large collections")
+        }
+
+        // Use paginated version with no limit
+        return try await list(limit: totalCount, offset: 0)
+    }
+
+    func list(limit: Int, offset: Int = 0) async throws -> [Note] {
+        // Load notes with pagination to prevent memory exhaustion
         var notes: [Note] = []
 
-        for row in try db.prepare(notesTable.select(idColumn, crdtDataColumn)) {
+        let query = notesTable
+            .order(lastModifiedColumn.desc)
+            .limit(limit, offset: offset)
+
+        for row in try db.prepare(query.select(idColumn, crdtDataColumn)) {
             guard let id = UUID(uuidString: row[idColumn]) else {
                 continue
             }
@@ -352,6 +367,10 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
         }
 
         return notes
+    }
+
+    func count() throws -> Int {
+        return try db.scalar(notesTable.count)
     }
 
     func search(query: String) async throws -> [Note] {
