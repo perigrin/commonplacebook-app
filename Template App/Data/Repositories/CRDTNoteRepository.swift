@@ -101,6 +101,31 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
         try db.run("CREATE INDEX IF NOT EXISTS idx_tombstone_deleted_at ON tombstones(deleted_at)")
     }
 
+    private func validateCRDTData(_ data: Data) async -> Bool {
+        // Check minimum size (Automerge documents have minimum structure)
+        guard data.count >= 100 else {
+            print("CRDT data too small: \(data.count) bytes")
+            return false
+        }
+
+        // Check maximum size
+        let maxSize = 10 * 1024 * 1024  // 10MB
+        guard data.count < maxSize else {
+            print("CRDT data too large: \(data.count) bytes")
+            return false
+        }
+
+        // Try to load it to verify structure
+        do {
+            let doc = try await crdtService.load(data: data)
+            _ = try await crdtService.readNote(docHandle: doc)
+            return true
+        } catch {
+            print("CRDT data validation failed: \(error)")
+            return false
+        }
+    }
+
     private func ensureDirectoryExists() throws {
         if !fileManager.fileExists(atPath: notesDirectory.path) {
             try fileManager.createDirectory(
@@ -119,9 +144,9 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
             return
         }
 
-        // Add defer to ensure cleanup on error
+        var shouldCloseDescriptor = true
         defer {
-            if fileWatcher == nil {
+            if shouldCloseDescriptor {
                 close(descriptor)
             }
         }
@@ -144,39 +169,59 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
 
         source.resume()
         self.fileWatcher = source
+        shouldCloseDescriptor = false  // Transfer ownership to fileWatcher
     }
 
     // MARK: - LRU Cache Management
 
     private func cacheDocument(_ id: UUID, _ document: DocHandle) {
+        // Remove existing entry if present
+        if let existingIndex = cacheOrder.firstIndex(of: id) {
+            cacheOrder.remove(at: existingIndex)
+        }
+
+        // Add to front of queue
+        cacheOrder.insert(id, at: 0)
         documentCache[id] = document
 
-        // Update LRU order
-        cacheOrder.removeAll { $0 == id }
-        cacheOrder.append(id)
-
-        // Evict old entries, but skip active documents
+        // Evict oldest non-active documents if over limit
         var attempts = 0
-        let maxAttempts = cacheOrder.count + 1  // Prevent infinite loop
+        let maxAttempts = cacheOrder.count + 1
 
         while documentCache.count > maxCacheSize && attempts < maxAttempts {
             attempts += 1
 
-            if let oldest = cacheOrder.first, !activeDocuments.contains(oldest) {
-                documentCache.removeValue(forKey: oldest)
-                cacheOrder.removeFirst()
-            } else if let oldest = cacheOrder.first {
-                // Skip this one, try next
-                cacheOrder.removeFirst()
-                cacheOrder.append(oldest)
-            } else {
-                break
+            guard let oldestId = cacheOrder.last else { break }
+
+            // Don't evict active documents
+            if activeDocuments.contains(oldestId) {
+                // Move to front to try next time
+                cacheOrder.removeLast()
+                cacheOrder.insert(oldestId, at: 0)
+                continue
             }
+
+            // Evict this document
+            cacheOrder.removeLast()
+            documentCache.removeValue(forKey: oldestId)
         }
 
-        // If we still can't evict anything, log warning
+        // Emergency eviction if we still can't evict anything
         if documentCache.count > maxCacheSize && attempts >= maxAttempts {
-            print("WARNING: Cache size (\(documentCache.count)) exceeds limit (\(maxCacheSize)) with all active documents")
+            print("CRITICAL: Cache overflow (\(documentCache.count) documents), forcing eviction")
+
+            // Calculate how many to evict
+            let overCount = documentCache.count - maxCacheSize
+            let toEvict = min(overCount, cacheOrder.count)
+
+            // Force evict oldest documents, even if active
+            for _ in 0..<toEvict {
+                guard let oldestId = cacheOrder.last else { break }
+                cacheOrder.removeLast()
+                documentCache.removeValue(forKey: oldestId)
+                activeDocuments.remove(oldestId)
+                print("Force-evicted active document: \(oldestId)")
+            }
         }
     }
 
@@ -612,6 +657,11 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
 
     /// Save CRDT data for a note (for persisting reconstructed data)
     func saveCRDTData(for id: UUID, data: Data) async throws {
+        // Validate CRDT data before persisting
+        guard await validateCRDTData(data) else {
+            throw RepositoryError.invalidCRDTData
+        }
+
         markActive(id: id)
         defer { markInactive(id: id) }
 

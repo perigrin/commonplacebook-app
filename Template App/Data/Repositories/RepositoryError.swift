@@ -9,6 +9,7 @@ enum RepositoryError: Error, LocalizedError {
     case duplicateNote(UUID)
     case storageError(String)
     case concurrencyError(String)
+    case invalidCRDTData
 
     var errorDescription: String? {
         switch self {
@@ -20,6 +21,8 @@ enum RepositoryError: Error, LocalizedError {
             return "Storage error: \(detail)"
         case .concurrencyError(let detail):
             return "Concurrency error: \(detail)"
+        case .invalidCRDTData:
+            return "Invalid CRDT data: data failed validation checks"
         }
     }
 }

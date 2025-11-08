@@ -16,9 +16,14 @@ actor iCloudSyncService {
 
     private var syncTask: Task<Void, Never>?
     private var backgroundSyncTask: Task<Void, Never>?
-    private var activeSyncTask: Task<Void, Never>?
     private var accountStatusObserver: NSObjectProtocol?
-    private let syncLock = NSLock()
+
+    // State machine for sync coordination (replaces NSLock)
+    private enum SyncState {
+        case idle
+        case syncing(task: Task<Void, Never>)
+    }
+    private var syncState = SyncState.idle
 
     // Change tracking
     private var lastSyncDate: Date?
@@ -53,17 +58,18 @@ actor iCloudSyncService {
         }
         set {
             _serverChangeToken = newValue
-            Task { @MainActor in
-                if let token = newValue {
-                    let data = try? NSKeyedArchiver.archivedData(
-                        withRootObject: token,
-                        requiringSecureCoding: true
-                    )
-                    UserDefaults.standard.set(data, forKey: "icloud_sync_change_token")
-                } else {
-                    UserDefaults.standard.removeObject(forKey: "icloud_sync_change_token")
-                }
+
+            // Synchronous write - UserDefaults is thread-safe
+            if let token = newValue {
+                let data = try? NSKeyedArchiver.archivedData(
+                    withRootObject: token,
+                    requiringSecureCoding: true
+                )
+                UserDefaults.standard.set(data, forKey: "icloud_sync_change_token")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "icloud_sync_change_token")
             }
+            UserDefaults.standard.synchronize() // Force immediate write
         }
     }
 
@@ -177,10 +183,11 @@ actor iCloudSyncService {
         _isSyncing = false
         statusSubject.send(.idle)
 
-        // Cancel and await active sync
-        activeSyncTask?.cancel()
-        await activeSyncTask?.value
-        activeSyncTask = nil
+        // Wait for active sync using state machine
+        if case .syncing(let task) = syncState {
+            await task.value
+        }
+        syncState = .idle
 
         // Cancel ongoing operations
         syncTask?.cancel()
@@ -203,17 +210,20 @@ actor iCloudSyncService {
     private func handleAccountChange() async {
         print("iCloud account changed - re-verifying authentication")
 
-        // Wait for active sync to complete before stopping
-        if let activeTask = activeSyncTask {
+        // Wait for active sync using state machine
+        if case .syncing(let task) = syncState {
             print("Waiting for active sync to complete before handling account change")
-            await activeTask.value
+            await task.value
         }
 
         do {
             let container = CKContainer.default()
             let accountStatus = try await container.accountStatus()
 
-            if accountStatus != .available {
+            if accountStatus == .available {
+                // Re-setup sync
+                await startBackgroundSync()
+            } else {
                 await stop()
                 statusSubject.send(.error("iCloud account changed. Please restart sync."))
             }
@@ -225,24 +235,19 @@ actor iCloudSyncService {
     }
 
     func syncNow() async {
-        syncLock.lock()
-        if let existing = activeSyncTask, !existing.isCancelled {
-            syncLock.unlock()
-            await existing.value
-            return
+        switch syncState {
+        case .idle:
+            let task = Task {
+                await performSyncWithRetry()
+            }
+            syncState = .syncing(task: task)
+            await task.value
+            syncState = .idle
+
+        case .syncing(let existingTask):
+            // Already syncing, wait for it
+            await existingTask.value
         }
-
-        activeSyncTask = Task {
-            await performSyncWithRetry()
-        }
-        let task = activeSyncTask!
-        syncLock.unlock()
-
-        await task.value
-
-        syncLock.lock()
-        activeSyncTask = nil
-        syncLock.unlock()
     }
 
     private func performSyncWithRetry() async {
@@ -298,31 +303,60 @@ actor iCloudSyncService {
     // MARK: - Push (Local to Remote)
 
     private func pushLocalChanges() async throws {
-        // Get notes modified since last sync (change detection)
-        let modifiedNotes: [Note]
-        if let lastSync = lastSyncDate {
-            modifiedNotes = try await repository.listModifiedSince(lastSync)
-        } else {
-            // First sync - upload all notes
-            modifiedNotes = try await repository.list()
-        }
+        guard let lastSync = lastSyncDate else {
+            // First sync - use pagination to avoid memory exhaustion
+            let batchSize = 100
+            var offset = 0
 
-        guard !modifiedNotes.isEmpty else {
-            // No local changes - also check for deletes
-            try await pushDeletes()
+            repeat {
+                let batch = try await repository.list(limit: batchSize, offset: offset)
+                guard !batch.isEmpty else { break }
+
+                var recordsToSave: [CKRecord] = []
+
+                for note in batch {
+                    guard let crdtData = try await repository.getCRDTData(for: note.id) else {
+                        continue
+                    }
+
+                    let recordID = CKRecord.ID(recordName: note.id.uuidString, zoneID: zoneID)
+                    let record = CKRecord(recordType: recordType, recordID: recordID)
+                    record["id"] = note.id.uuidString
+                    record["crdt_data"] = crdtData
+                    record["modified"] = note.modified as CKRecordValue
+                    recordsToSave.append(record)
+                }
+
+                if !recordsToSave.isEmpty {
+                    try await cloudKit.saveRecords(recordsToSave)
+                }
+
+                offset += batchSize
+            } while true
+
             return
         }
 
-        // Upload modified notes to CloudKit
-        var records: [CKRecord] = []
+        // Incremental sync - existing logic
+        let modifiedNotes = try await repository.listModifiedSince(lastSync)
+
+        var recordsToSave: [CKRecord] = []
+
         for note in modifiedNotes {
-            if let record = try await createCloudKitRecord(for: note) {
-                records.append(record)
+            guard let crdtData = try await repository.getCRDTData(for: note.id) else {
+                continue
             }
+
+            let recordID = CKRecord.ID(recordName: note.id.uuidString, zoneID: zoneID)
+            let record = CKRecord(recordType: recordType, recordID: recordID)
+            record["id"] = note.id.uuidString
+            record["crdt_data"] = crdtData
+            record["modified"] = note.modified as CKRecordValue
+            recordsToSave.append(record)
         }
 
-        if !records.isEmpty {
-            try await cloudKit.saveRecords(records)
+        if !recordsToSave.isEmpty {
+            try await cloudKit.saveRecords(recordsToSave)
         }
 
         // Handle deletes
@@ -448,6 +482,13 @@ actor iCloudSyncService {
                 // Continue with merge using reconstructed data
                 localCRDTData = reconstructedData
             } else {
+                // Check if this was deleted locally
+                let deletedIDs = try await repository.getDeletedSince(Date.distantPast)
+                if deletedIDs.contains(id) {
+                    print("Note \(id) was deleted locally, skipping remote resurrection")
+                    return
+                }
+
                 // Truly missing - use remote
                 print("No local data at all for \(id), using remote version")
                 let remoteNote = try await crdtService.readNote(docHandle: remoteDoc)
@@ -476,7 +517,10 @@ actor iCloudSyncService {
         backgroundSyncTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self = self else { break }
-                try? await Task.sleep(nanoseconds: UInt64(self.backgroundSyncInterval * 1_000_000_000))
+                let interval = self.backgroundSyncInterval
+                try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+
+                // Use syncIfActive which internally uses syncNow with retry
                 await self.syncIfActive()
             }
         }
