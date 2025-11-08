@@ -14,6 +14,8 @@ struct NoteRowView: View {
         return formatter
     }()
 
+    private static let abstractGenerator = AbstractGenerator()
+
     let note: Note
 
     var body: some View {
@@ -41,16 +43,16 @@ struct NoteRowView: View {
     }
 
     private var previewText: String {
+        // Remove title from content if present
         let cleaned = note.content
             .replacingOccurrences(of: "# \(note.title)", with: "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
-        if cleaned.count <= Constants.previewCharacterLimit {
-            return cleaned
-        }
-
-        let truncated = String(cleaned.prefix(Constants.previewCharacterLimit))
-        return truncated + "..."
+        // Use AbstractGenerator for smart truncation with markdown stripping
+        return Self.abstractGenerator.generateAbstract(
+            from: cleaned,
+            maxLength: Constants.previewCharacterLimit
+        )
     }
 
     private var relativeDate: String {
