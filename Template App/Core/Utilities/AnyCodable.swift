@@ -5,7 +5,7 @@ import Foundation
 
 /// A type-erased Codable value
 /// Supports storing any Codable type while maintaining type safety
-struct AnyCodable: Codable, Hashable, Equatable {
+struct AnyCodable: Codable, Hashable, Equatable, @unchecked Sendable {
     let value: Any
 
     init(_ value: Any) {

@@ -4,7 +4,7 @@
 import Foundation
 
 /// Search result with note ID and relevance score
-struct SearchResult: Equatable {
+struct SearchResult: Equatable, Sendable {
     let noteId: UUID
     let relevance: Float // Cosine similarity (0.0 to 1.0)
 }

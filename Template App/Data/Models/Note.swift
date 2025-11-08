@@ -4,7 +4,7 @@
 import Foundation
 
 /// A note in the Zettelkasten system
-struct Note: Codable, Equatable, Hashable, Identifiable {
+struct Note: Codable, Equatable, Hashable, Identifiable, Sendable {
     let id: UUID
     let created: Date
     let device: String

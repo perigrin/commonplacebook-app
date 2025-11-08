@@ -4,7 +4,7 @@
 import Foundation
 
 /// Geographic location with accuracy
-struct Location: Codable, Equatable, Hashable {
+struct Location: Codable, Equatable, Hashable, Sendable {
     let latitude: Double
     let longitude: Double
     let accuracy: Double  // Horizontal accuracy in meters
