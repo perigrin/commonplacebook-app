@@ -272,6 +272,56 @@ final class CRDTNoteRepositoryTests: XCTestCase {
         XCTAssertTrue(true, "Delete should be idempotent")
     }
 
+    func testDeleteCreatesTombstone() async throws {
+        // GIVEN existing note
+        let note = createTestNote(title: "To Delete", content: "Content")
+        _ = try await repository.create(note: note)
+
+        // WHEN deleting
+        try await repository.delete(id: note.id)
+
+        // THEN tombstone exists
+        let deletedIDs = try await repository.getDeletedSince(Date.distantPast)
+        XCTAssertTrue(deletedIDs.contains(note.id), "Should track deletion in tombstones")
+    }
+
+    func testGetDeletedSinceReturnsRecentDeletes() async throws {
+        // GIVEN notes deleted at different times
+        let note1 = createTestNote(title: "Delete 1", content: "Content 1")
+        let note2 = createTestNote(title: "Delete 2", content: "Content 2")
+        _ = try await repository.create(note: note1)
+        _ = try await repository.create(note: note2)
+
+        let beforeDelete = Date()
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        try await repository.delete(id: note1.id)
+        try await Task.sleep(nanoseconds: 100_000_000)
+        try await repository.delete(id: note2.id)
+
+        // WHEN getting deletes since cutoff
+        let deletedIDs = try await repository.getDeletedSince(beforeDelete)
+
+        // THEN both deletes returned
+        XCTAssertEqual(deletedIDs.count, 2)
+        XCTAssertTrue(deletedIDs.contains(note1.id))
+        XCTAssertTrue(deletedIDs.contains(note2.id))
+    }
+
+    func testClearTombstoneRemovesEntry() async throws {
+        // GIVEN deleted note with tombstone
+        let note = createTestNote(title: "Delete", content: "Content")
+        _ = try await repository.create(note: note)
+        try await repository.delete(id: note.id)
+
+        // WHEN clearing tombstone
+        try await repository.clearTombstone(id: note.id)
+
+        // THEN tombstone no longer exists
+        let deletedIDs = try await repository.getDeletedSince(Date.distantPast)
+        XCTAssertFalse(deletedIDs.contains(note.id), "Tombstone should be cleared")
+    }
+
     // MARK: - List Tests
 
     func testListQueriesCRDTStore() async throws {

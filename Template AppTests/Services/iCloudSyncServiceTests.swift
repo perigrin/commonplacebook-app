@@ -468,6 +468,7 @@ actor MockCRDTNoteRepository: CRDTNoteRepositoryProtocol {
     private var notes: [UUID: Note] = [:]
     private var crdtData: [UUID: Data] = [:]
     private var modificationDates: [UUID: Date] = [:]
+    private var tombstones: [UUID: Date] = [:]
     private let crdtService = CRDTService()
 
     func addNote(_ note: Note) async {
@@ -494,6 +495,7 @@ actor MockCRDTNoteRepository: CRDTNoteRepositoryProtocol {
         notes.removeValue(forKey: id)
         crdtData.removeValue(forKey: id)
         modificationDates.removeValue(forKey: id)
+        tombstones[id] = Date()
     }
 
     func getNote(id: UUID) -> Note? {
@@ -547,5 +549,17 @@ actor MockCRDTNoteRepository: CRDTNoteRepositoryProtocol {
 
     func getAllNoteIDs() async throws -> Set<UUID> {
         return Set(notes.keys)
+    }
+
+    func trackDeletion(id: UUID) throws {
+        tombstones[id] = Date()
+    }
+
+    func getDeletedSince(_ date: Date) throws -> [UUID] {
+        return tombstones.filter { $0.value > date }.map { $0.key }
+    }
+
+    func clearTombstone(id: UUID) throws {
+        tombstones.removeValue(forKey: id)
     }
 }

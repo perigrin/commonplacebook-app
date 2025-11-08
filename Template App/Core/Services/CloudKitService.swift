@@ -48,9 +48,29 @@ actor CloudKitService: CloudKitServiceProtocol {
             operation.savePolicy = .changedKeys
             operation.qualityOfService = .userInitiated
 
+            // Handle partial errors
+            var saveErrors: [CKRecord.ID: Error] = [:]
+
+            operation.perRecordCompletionBlock = { record, error in
+                if let error = error {
+                    saveErrors[record.recordID] = error
+                }
+            }
+
             operation.modifyRecordsCompletionBlock = { _, _, error in
                 if let error = error {
-                    continuation.resume(throwing: error)
+                    // Check if all records failed or just some
+                    if saveErrors.count == records.count {
+                        // Total failure
+                        continuation.resume(throwing: error)
+                    } else if !saveErrors.isEmpty {
+                        // Partial failure - log but continue
+                        print("Warning: \(saveErrors.count) records failed to save")
+                        // Could track these for retry
+                        continuation.resume()
+                    } else {
+                        continuation.resume()
+                    }
                 } else {
                     continuation.resume()
                 }
@@ -106,6 +126,19 @@ actor CloudKitService: CloudKitServiceProtocol {
     func deleteRecords(withIDs recordIDs: [CKRecord.ID]) async throws {
         guard !recordIDs.isEmpty else { return }
 
+        // CloudKit limit is 400 records per operation - batch if needed
+        let batchSize = 400
+        let batches = stride(from: 0, to: recordIDs.count, by: batchSize).map {
+            Array(recordIDs[$0..<min($0 + batchSize, recordIDs.count)])
+        }
+
+        // Process each batch sequentially
+        for batch in batches {
+            try await deleteBatch(batch)
+        }
+    }
+
+    private func deleteBatch(_ recordIDs: [CKRecord.ID]) async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             let operation = CKModifyRecordsOperation(recordsToSave: nil, recordIDsToDelete: recordIDs)
             operation.qualityOfService = .userInitiated

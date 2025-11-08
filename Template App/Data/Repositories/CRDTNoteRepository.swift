@@ -24,6 +24,11 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
     private let titleColumn = Expression<String>("title")
     private let contentColumn = Expression<String>("content")
 
+    // Tombstone table for delete tracking
+    private let tombstonesTable = Table("tombstones")
+    private let tombstoneIdColumn = Expression<String>("id")
+    private let tombstoneDeletedAtColumn = Expression<Int64>("deleted_at")
+
     // LRU cache for documents (bounded memory)
     private let maxCacheSize = 100
     private var documentCache: [UUID: DocHandle] = [:]
@@ -78,6 +83,12 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
         // Create indexes for efficient searching
         try db.run("CREATE INDEX IF NOT EXISTS idx_title ON notes(title)")
         try db.run("CREATE INDEX IF NOT EXISTS idx_content ON notes(content)")
+
+        // Create tombstones table
+        try db.run(tombstonesTable.create(ifNotExists: true) { table in
+            table.column(tombstoneIdColumn, primaryKey: true)
+            table.column(tombstoneDeletedAtColumn)
+        })
     }
 
     private func ensureDirectoryExists() throws {
@@ -171,7 +182,7 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
 
         // Export to file
         do {
-            try exportToFile(note: note)
+            try await exportToFile(note: note)
         } catch {
             // Log but don't fail - file export is best-effort
             print("Warning: Failed to export note \(note.id): \(error)")
@@ -221,6 +232,9 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
             throw RepositoryError.noteNotFound(note.id)
         }
 
+        // Invalidate cache before modification to prevent corruption if transaction fails
+        invalidateCache(for: note.id)
+
         // Update CRDT document
         try await crdtService.updateNote(docHandle: existingDoc, note: note)
 
@@ -238,9 +252,12 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
             ))
         }
 
+        // Cache document ONLY AFTER successful transaction
+        cacheDocument(note.id, existingDoc)
+
         // Export to file
         do {
-            try exportToFile(note: note)
+            try await exportToFile(note: note)
         } catch {
             print("Warning: Failed to export note \(note.id): \(error)")
         }
@@ -249,6 +266,9 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
     }
 
     func delete(id: UUID) async throws {
+        // Track deletion before removing from database
+        try trackDeletion(id: id)
+
         // Remove from database
         let query = notesTable.filter(idColumn == id.uuidString)
         try db.run(query.delete())
@@ -299,10 +319,18 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
     }
 
     func search(query: String) async throws -> [Note] {
-        // Use SQLite for efficient filtering
-        let pattern = "%\(query)%"
+        // Escape special LIKE characters to prevent SQL injection
+        let escapedQuery = query
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "%", with: "\\%")
+            .replacingOccurrences(of: "_", with: "\\_")
+            .replacingOccurrences(of: "[", with: "\\[")
+
+        let pattern = "%\(escapedQuery)%"
+
+        // Use escaped pattern with escape character
         let filteredTable = notesTable.filter(
-            titleColumn.like(pattern) || contentColumn.like(pattern)
+            titleColumn.like(pattern, escape: "\\") || contentColumn.like(pattern, escape: "\\")
         )
 
         var notes: [Note] = []
@@ -333,7 +361,7 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
 
     // MARK: - File System Sync
 
-    private func exportToFile(note: Note) throws {
+    private func exportToFile(note: Note) async throws {
         let filePath = noteFilePath(for: note.id)
         let markdown = formatter.serialize(note: note)
 
@@ -346,7 +374,7 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
             } catch {
                 lastError = error
                 if attempt < 2 {
-                    try? await Task.sleep(nanoseconds: UInt64(pow(2.0, Double(attempt)) * 100_000_000))
+                    try await Task.sleep(nanoseconds: UInt64(pow(2.0, Double(attempt)) * 100_000_000))
                 }
             }
         }
@@ -425,9 +453,6 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
             try await crdtService.updateNote(docHandle: document, note: parsedNote)
         }
 
-        // Update cache with merged document
-        cacheDocument(id, document)
-
         // Save merged result to database
         let mergedNote = try await crdtService.readNote(docHandle: document)
         let crdtData = await crdtService.save(docHandle: document)
@@ -455,6 +480,9 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
                 ))
             }
         }
+
+        // Cache document ONLY AFTER successful transaction
+        cacheDocument(id, document)
     }
 
     // MARK: - Helper Methods
@@ -531,5 +559,29 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
         }
 
         return ids
+    }
+
+    // MARK: - Tombstone Methods
+
+    /// Track deletion for sync
+    func trackDeletion(id: UUID) throws {
+        try db.run(tombstonesTable.insert(or: .replace,
+            tombstoneIdColumn <- id.uuidString,
+            tombstoneDeletedAtColumn <- Int64(Date().timeIntervalSince1970)
+        ))
+    }
+
+    /// Get IDs deleted since a date
+    func getDeletedSince(_ date: Date) throws -> [UUID] {
+        let timestamp = Int64(date.timeIntervalSince1970)
+        let query = tombstonesTable.filter(tombstoneDeletedAtColumn > timestamp)
+        return try db.prepare(query).compactMap { row in
+            UUID(uuidString: row[tombstoneIdColumn])
+        }
+    }
+
+    /// Clear tombstone after successful sync
+    func clearTombstone(id: UUID) throws {
+        try db.run(tombstonesTable.filter(tombstoneIdColumn == id.uuidString).delete())
     }
 }

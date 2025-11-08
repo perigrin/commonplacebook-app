@@ -16,6 +16,8 @@ actor iCloudSyncService {
 
     private var syncTask: Task<Void, Never>?
     private var backgroundSyncTask: Task<Void, Never>?
+    private var activeSyncTask: Task<Void, Never>?
+    private var accountStatusObserver: NSObjectProtocol?
 
     // Change tracking
     private var lastSyncDate: Date?
@@ -108,6 +110,17 @@ actor iCloudSyncService {
             return
         }
 
+        // Monitor iCloud account changes
+        accountStatusObserver = NotificationCenter.default.addObserver(
+            forName: .CKAccountChanged,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task {
+                await self?.handleAccountChange()
+            }
+        }
+
         _isSyncing = true
         statusSubject.send(.syncing)
 
@@ -139,6 +152,12 @@ actor iCloudSyncService {
         syncTask?.cancel()
         backgroundSyncTask?.cancel()
 
+        // Remove account observer
+        if let observer = accountStatusObserver {
+            NotificationCenter.default.removeObserver(observer)
+            accountStatusObserver = nil
+        }
+
         // Remove subscription
         do {
             try await cloudKit.deleteSubscription(withID: subscriptionID)
@@ -147,7 +166,41 @@ actor iCloudSyncService {
         }
     }
 
+    private func handleAccountChange() async {
+        print("iCloud account changed - re-verifying authentication")
+
+        do {
+            let container = CKContainer.default()
+            let accountStatus = try await container.accountStatus()
+
+            if accountStatus != .available {
+                // Account no longer available - stop sync
+                await stop()
+                statusSubject.send(.error("iCloud account changed. Please restart sync."))
+            }
+        } catch {
+            print("Failed to check account status: \(error)")
+            await stop()
+            statusSubject.send(.error("iCloud authentication lost"))
+        }
+    }
+
     func syncNow() async {
+        // Prevent concurrent syncs
+        if let existing = activeSyncTask, !existing.isCancelled {
+            await existing.value
+            return
+        }
+
+        activeSyncTask = Task {
+            defer { activeSyncTask = nil }
+            await performSync()
+        }
+
+        await activeSyncTask?.value
+    }
+
+    private func performSync() async {
         do {
             statusSubject.send(.syncing)
 
@@ -172,7 +225,7 @@ actor iCloudSyncService {
                 retryCount += 1
                 let delay = min(60.0, pow(2.0, Double(retryCount)) * 5.0) // Cap at 60 seconds
                 try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-                await syncNow()
+                await performSync()
             } else if retryCount >= maxRetries {
                 statusSubject.send(.error("Sync failed after \(maxRetries) attempts"))
                 retryCount = 0
@@ -243,18 +296,14 @@ actor iCloudSyncService {
     }
 
     private func pushDeletes() async throws {
-        // Get local note IDs
-        let localIDs = try await repository.getAllNoteIDs()
-
-        // Fetch all remote record IDs
-        let remoteRecords = try await cloudKit.fetchRecords(ofType: recordType)
-        let remoteIDs = Set(remoteRecords.compactMap { record -> UUID? in
-            guard let idString = record["id"] as? String else { return nil }
-            return UUID(uuidString: idString)
-        })
-
-        // Find notes that exist remotely but not locally (deleted)
-        let deletedIDs = remoteIDs.subtracting(localIDs)
+        // Get deletions since last sync
+        let deletedIDs: [UUID]
+        if let lastSync = lastSyncDate {
+            deletedIDs = try await repository.getDeletedSince(lastSync)
+        } else {
+            // First sync - no deletes to push
+            return
+        }
 
         guard !deletedIDs.isEmpty else { return }
 
@@ -263,6 +312,11 @@ actor iCloudSyncService {
             CKRecord.ID(recordName: id.uuidString, zoneID: zoneID)
         }
         try await cloudKit.deleteRecords(withIDs: recordIDsToDelete)
+
+        // Clear tombstones after successful sync
+        for id in deletedIDs {
+            try await repository.clearTombstone(id: id)
+        }
     }
 
     // MARK: - Pull (Remote to Local)
@@ -318,9 +372,21 @@ actor iCloudSyncService {
     private func mergeRemoteNote(id: UUID, remoteDoc: DocHandle, remoteCRDTData: Data) async throws {
         // Load LOCAL CRDT document from repository (CRITICAL FIX)
         guard let localCRDTData = try await repository.getCRDTData(for: id) else {
-            // Local CRDT missing - use remote version
-            let remoteNote = try await crdtService.readNote(docHandle: remoteDoc)
-            _ = try await repository.update(note: remoteNote)
+            // CRITICAL: Don't just use remote! Reconstruct local CRDT from note content
+            if let localNote = try await repository.read(id: id) {
+                // Create CRDT from current note state
+                let localDoc = await crdtService.createDocument()
+                try await crdtService.updateNote(docHandle: localDoc, note: localNote)
+
+                // Now merge properly
+                let merged = try await crdtService.merge(doc1: localDoc, doc2: remoteDoc)
+                let mergedNote = try await crdtService.readNote(docHandle: merged)
+                _ = try await repository.update(note: mergedNote)
+            } else {
+                // Only use remote if no local note exists at all
+                let remoteNote = try await crdtService.readNote(docHandle: remoteDoc)
+                _ = try await repository.update(note: remoteNote)
+            }
             return
         }
 
@@ -343,21 +409,20 @@ actor iCloudSyncService {
         backgroundSyncTask = Task { [weak self] in
             while !Task.isCancelled {
                 do {
-                    // Wait for interval
-                    try await Task.sleep(nanoseconds: UInt64(backgroundSyncInterval * 1_000_000_000))
+                    try await Task.sleep(nanoseconds: UInt64(self?.backgroundSyncInterval ?? 600 * 1_000_000_000))
 
-                    // Perform sync if still active
-                    guard let self = self else { break }
-                    let stillSyncing = await self._isSyncing
-                    if stillSyncing {
-                        await self.syncNow()
-                    }
+                    // Atomic check-and-sync within actor context
+                    await self?.syncIfActive()
                 } catch {
-                    // Task cancelled or sleep interrupted
                     break
                 }
             }
         }
+    }
+
+    private func syncIfActive() async {
+        guard _isSyncing else { return }
+        await syncNow()
     }
 
     // MARK: - Error Handling
@@ -366,5 +431,17 @@ actor iCloudSyncService {
         case invalidRecord
         case syncFailed(String)
         case notAuthenticated(String)
+    }
+
+    // MARK: - Cleanup
+
+    deinit {
+        // Complete publisher to prevent memory leak
+        statusSubject.send(completion: .finished)
+
+        // Remove observer if still present
+        if let observer = accountStatusObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
     }
 }

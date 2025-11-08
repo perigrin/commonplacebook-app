@@ -53,4 +53,13 @@ protocol CRDTNoteRepositoryProtocol: Actor {
 
     /// Get all note IDs (for detecting deletes)
     func getAllNoteIDs() async throws -> Set<UUID>
+
+    /// Track deletion for sync
+    func trackDeletion(id: UUID) throws
+
+    /// Get IDs deleted since a date
+    func getDeletedSince(_ date: Date) throws -> [UUID]
+
+    /// Clear tombstone after successful sync
+    func clearTombstone(id: UUID) throws
 }
