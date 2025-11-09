@@ -36,9 +36,20 @@ actor CRDTService {
         // Set scalar fields (last-write-wins semantics)
         try docHandle.put(obj: .ROOT, key: "id", value: .String(note.id.uuidString))
         try docHandle.put(obj: .ROOT, key: "created", value: .Int(Int64(note.created.timeIntervalSince1970)))
+        try docHandle.put(obj: .ROOT, key: "modified", value: .Int(Int64(note.modified.timeIntervalSince1970)))
         try docHandle.put(obj: .ROOT, key: "device", value: .String(note.device))
         try docHandle.put(obj: .ROOT, key: "content", value: .String(note.content))
         try docHandle.put(obj: .ROOT, key: "title", value: .String(note.title))
+
+        // Handle deletedAt (optional timestamp for soft delete)
+        if let deletedAt = note.deletedAt {
+            try docHandle.put(obj: .ROOT, key: "deletedAt", value: .Int(Int64(deletedAt.timeIntervalSince1970)))
+        } else {
+            // Remove deletedAt if nil (check if it exists first to avoid errors)
+            if (try? docHandle.get(obj: .ROOT, key: "deletedAt")) != nil {
+                try docHandle.delete(obj: .ROOT, key: "deletedAt")
+            }
+        }
 
         // Handle location (optional Map)
         if let location = note.location {
@@ -117,6 +128,15 @@ actor CRDTService {
         }
         let created = Date(timeIntervalSince1970: TimeInterval(createdTimestamp))
 
+        // Extract modified timestamp with fallback to created for backward compatibility
+        let modified: Date
+        if let modifiedValue = try? docHandle.get(obj: .ROOT, key: "modified"),
+           case .Scalar(.Int(let modifiedTimestamp)) = modifiedValue {
+            modified = Date(timeIntervalSince1970: TimeInterval(modifiedTimestamp))
+        } else {
+            modified = created  // Fallback for legacy documents
+        }
+
         // Extract device
         guard let deviceValue = try? docHandle.get(obj: .ROOT, key: "device"),
               case .Scalar(.String(let device)) = deviceValue else {
@@ -133,6 +153,13 @@ actor CRDTService {
         guard let titleValue = try? docHandle.get(obj: .ROOT, key: "title"),
               case .Scalar(.String(let title)) = titleValue else {
             throw CRDTServiceError.missingRequiredField("title")
+        }
+
+        // Extract deletedAt timestamp (optional - for soft delete)
+        var deletedAt: Date? = nil
+        if let deletedAtValue = try? docHandle.get(obj: .ROOT, key: "deletedAt"),
+           case .Scalar(.Int(let deletedAtTimestamp)) = deletedAtValue {
+            deletedAt = Date(timeIntervalSince1970: TimeInterval(deletedAtTimestamp))
         }
 
         // Extract location (optional)
@@ -170,11 +197,13 @@ actor CRDTService {
         return Note(
             id: id,
             created: created,
+            modified: modified,
             device: device,
             location: location,
             content: content,
             title: title,
             backlinks: backlinks,
+            deletedAt: deletedAt,
             unknownFrontmatterFields: [:]
         )
     }

@@ -24,7 +24,13 @@ class NoteFileFormatter {
         // Required fields
         yaml.append("id: \(note.id.uuidString)")
         yaml.append("created: \(dateFormatter.string(from: note.created))")
+        yaml.append("modified: \(dateFormatter.string(from: note.modified))")
         yaml.append("device: \(note.device)")
+
+        // Optional deletedAt (soft delete timestamp)
+        if let deletedAt = note.deletedAt {
+            yaml.append("deletedAt: \(dateFormatter.string(from: deletedAt))")
+        }
 
         // Optional location
         if let location = note.location {
@@ -79,8 +85,24 @@ class NoteFileFormatter {
             throw NoteFileFormatterError.invalidDate(metadata["created"] as? String ?? "nil")
         }
 
+        // Modified field with fallback to created for backward compatibility
+        let modified: Date
+        if let modifiedString = metadata["modified"] as? String,
+           let modifiedDate = dateFormatter.date(from: modifiedString) {
+            modified = modifiedDate
+        } else {
+            modified = created  // Fallback for legacy files
+        }
+
         guard let device = metadata["device"] as? String else {
             throw NoteFileFormatterError.missingRequiredField("device")
+        }
+
+        // Optional deletedAt (soft delete timestamp)
+        var deletedAt: Date? = nil
+        if let deletedAtString = metadata["deletedAt"] as? String,
+           let deletedAtDate = dateFormatter.date(from: deletedAtString) {
+            deletedAt = deletedAtDate
         }
 
         // Extract optional location
@@ -102,7 +124,7 @@ class NoteFileFormatter {
         let title = extractTitle(from: components.content)
 
         // Capture unknown fields (fields that aren't in our model)
-        let knownKeys: Set<String> = ["id", "created", "device", "location", "backlinks"]
+        let knownKeys: Set<String> = ["id", "created", "modified", "device", "location", "backlinks", "deletedAt"]
         var unknownFields: [String: AnyCodable] = [:]
         for (key, value) in metadata {
             if !knownKeys.contains(key) {
@@ -113,11 +135,13 @@ class NoteFileFormatter {
         return Note(
             id: id,
             created: created,
+            modified: modified,
             device: device,
             location: location,
             content: components.content,
             title: title,
             backlinks: backlinks,
+            deletedAt: deletedAt,
             unknownFrontmatterFields: unknownFields
         )
     }

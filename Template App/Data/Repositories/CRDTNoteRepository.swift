@@ -390,25 +390,46 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
         markActive(id: id)
         defer { markInactive(id: id) }
 
-        // Track deletion before removing from database
-        try trackDeletion(id: id)
+        // Soft delete - set deletedAt timestamp
+        guard var note = try await read(id: id) else {
+            return  // Idempotent - no error if doesn't exist
+        }
 
-        // Remove from database
-        let query = notesTable.filter(idColumn == id.uuidString)
-        try db.run(query.delete())
+        note.deletedAt = Date()
 
-        // Remove from cache
+        // Update note in CRDT and database
+        guard let existingDoc = try await loadDocument(id: id) else {
+            return
+        }
+
+        // Invalidate cache before modification
         invalidateCache(for: id)
 
-        // Remove file
-        let filePath = noteFilePath(for: id)
+        // Update CRDT document with deletedAt
+        try await crdtService.updateNote(docHandle: existingDoc, note: note)
+
+        // Save to database in transaction
+        let crdtData = await crdtService.save(docHandle: existingDoc)
+        let timestamp = Int64(Date().timeIntervalSince1970)
+
+        let query = notesTable.filter(idColumn == id.uuidString)
+        try db.transaction {
+            try db.run(query.update(
+                crdtDataColumn <- crdtData,
+                lastModifiedColumn <- timestamp,
+                titleColumn <- note.title,
+                contentColumn <- note.content
+            ))
+        }
+
+        // Cache document ONLY AFTER successful transaction
+        cacheDocument(id, existingDoc)
+
+        // Export to file (soft deleted notes remain in file system)
         do {
-            if fileManager.fileExists(atPath: filePath.path) {
-                try fileManager.removeItem(at: filePath)
-            }
+            try await exportToFile(note: note)
         } catch {
-            // Log error but don't fail (idempotent operation)
-            print("Warning: Failed to delete file at \(filePath): \(error)")
+            print("Warning: Failed to export deleted note \(id): \(error)")
         }
     }
 
@@ -457,7 +478,11 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
                 }
 
                 let note = try await crdtService.readNote(docHandle: document)
-                notes.append(note)
+
+                // Exclude deleted notes
+                if !note.isDeleted {
+                    notes.append(note)
+                }
             } catch {
                 // Log but continue with other notes
                 print("Warning: Failed to load note \(id): \(error)")
@@ -506,13 +531,127 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
                 }
 
                 let note = try await crdtService.readNote(docHandle: document)
-                notes.append(note)
+
+                // Exclude deleted notes
+                if !note.isDeleted {
+                    notes.append(note)
+                }
             } catch {
                 print("Warning: Failed to load note \(id) during search: \(error)")
             }
         }
 
         return notes
+    }
+
+    // MARK: - Trash Management
+
+    func listTrashed() async throws -> [Note] {
+        // Load all notes and filter for deleted ones
+        var trashedNotes: [Note] = []
+
+        for row in try db.prepare(notesTable.select(idColumn, crdtDataColumn)) {
+            guard let id = UUID(uuidString: row[idColumn]) else {
+                continue
+            }
+
+            markActive(id: id)
+            defer { markInactive(id: id) }
+
+            do {
+                let document: DocHandle
+                if let cached = documentCache[id] {
+                    document = cached
+                } else {
+                    document = try await crdtService.load(data: row[crdtDataColumn])
+                    cacheDocument(id, document)
+                }
+
+                let note = try await crdtService.readNote(docHandle: document)
+
+                // Include only deleted notes
+                if note.isDeleted {
+                    trashedNotes.append(note)
+                }
+            } catch {
+                print("Warning: Failed to load note \(id) in trash: \(error)")
+            }
+        }
+
+        return trashedNotes
+    }
+
+    func restore(id: UUID) async throws {
+        markActive(id: id)
+        defer { markInactive(id: id) }
+
+        // Restore the note by clearing deletedAt
+        guard var note = try await read(id: id) else {
+            throw RepositoryError.noteNotFound(id)
+        }
+
+        note.deletedAt = nil
+
+        // Update note in CRDT and database
+        guard let existingDoc = try await loadDocument(id: id) else {
+            throw RepositoryError.noteNotFound(id)
+        }
+
+        // Invalidate cache before modification
+        invalidateCache(for: id)
+
+        // Update CRDT document with cleared deletedAt
+        try await crdtService.updateNote(docHandle: existingDoc, note: note)
+
+        // Save to database in transaction
+        let crdtData = await crdtService.save(docHandle: existingDoc)
+        let timestamp = Int64(Date().timeIntervalSince1970)
+
+        let query = notesTable.filter(idColumn == id.uuidString)
+        try db.transaction {
+            try db.run(query.update(
+                crdtDataColumn <- crdtData,
+                lastModifiedColumn <- timestamp,
+                titleColumn <- note.title,
+                contentColumn <- note.content
+            ))
+        }
+
+        // Cache document ONLY AFTER successful transaction
+        cacheDocument(id, existingDoc)
+
+        // Export to file
+        do {
+            try await exportToFile(note: note)
+        } catch {
+            print("Warning: Failed to export restored note \(id): \(error)")
+        }
+    }
+
+    func purge(id: UUID) async throws {
+        markActive(id: id)
+        defer { markInactive(id: id) }
+
+        // Track deletion before removing from database
+        try trackDeletion(id: id)
+
+        // Remove from database (hard delete)
+        let query = notesTable.filter(idColumn == id.uuidString)
+        try db.run(query.delete())
+
+        // Remove from cache
+        invalidateCache(for: id)
+
+        // Remove file
+        let filePath = noteFilePath(for: id)
+        do {
+            if fileManager.fileExists(atPath: filePath.path) {
+                try fileManager.removeItem(at: filePath)
+            }
+        } catch {
+            // Log error but don't fail (idempotent operation)
+            print("Warning: Failed to delete file at \(filePath): \(error)")
+        }
     }
 
     // MARK: - File System Sync
