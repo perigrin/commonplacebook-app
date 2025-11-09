@@ -13,44 +13,90 @@ import CoreData
 struct Template_AppApp: App {
     /// Initialize the persistence controller
     @LazyInject(PersistenceController.self) private var persistenceController
-    
+
     /// Initialize the app coordinator
     private let appCoordinator = AppCoordinator()
-    
+
     /// Initialize the service locator
     private let serviceLocator: ServiceLocator
-    
+
     /// Initialize the app state
     @StateObject private var appState = AppState()
-    
+
+    /// Initialize biometric authentication service
+    @StateObject private var biometricAuth = BiometricAuthService()
+
+    /// Monitor app lifecycle
+    @Environment(\.scenePhase) private var scenePhase
+
     /// Initialize the app
     init() {
         // Bootstrap the service locator
         serviceLocator = ServiceLocator.shared
         serviceLocator.bootstrap()
         serviceLocator.bootstrapAppServices()
-        
+
         // Configure app appearance
         configureAppearance()
-        
+
         // Log app launch
         Logger.info("Application launched", category: .general)
     }
-    
+
     var body: some Scene {
         WindowGroup {
-            appCoordinator.rootView
-                .environment(\.managedObjectContext, persistenceController.container.viewContext)
-                .environment(\.serviceLocator, serviceLocator)
-                .environmentObject(appState)
-                .onAppear {
-                    // Perform any initialization when the app appears
-                    Logger.info("App view appeared", category: .ui)
+            ZStack {
+                appCoordinator.rootView
+                    .environment(\.managedObjectContext, persistenceController.container.viewContext)
+                    .environment(\.serviceLocator, serviceLocator)
+                    .environmentObject(appState)
+                    .environmentObject(biometricAuth)
+                    .onAppear {
+                        // Perform any initialization when the app appears
+                        Logger.info("App view appeared", category: .ui)
+                    }
+                    .onDisappear {
+                        // Perform any cleanup when the app disappears
+                        Logger.info("App view disappeared", category: .ui)
+                    }
+
+                // Show lock screen overlay when locked
+                if biometricAuth.isLocked {
+                    LockScreenView(authService: biometricAuth)
+                        .transition(.opacity)
+                        .zIndex(999)
                 }
-                .onDisappear {
-                    // Perform any cleanup when the app disappears
-                    Logger.info("App view disappeared", category: .ui)
+            }
+            .animation(.easeInOut(duration: 0.2), value: biometricAuth.isLocked)
+            .onChange(of: scenePhase) { oldPhase, newPhase in
+                handleScenePhaseChange(from: oldPhase, to: newPhase)
+            }
+        }
+    }
+
+    /// Handle scene phase changes for lock/unlock
+    private func handleScenePhaseChange(from old: ScenePhase, to new: ScenePhase) {
+        Task { @MainActor in
+            switch new {
+            case .background:
+                // Lock when app enters background
+                await biometricAuth.lockOnBackground()
+                Logger.info("App entered background - locked if biometric auth enabled", category: .security)
+
+            case .active:
+                // Attempt to unlock when app becomes active
+                if biometricAuth.isLocked {
+                    _ = await biometricAuth.unlockOnForeground()
+                    Logger.info("App became active - unlock attempted", category: .security)
                 }
+
+            case .inactive:
+                // App is inactive (e.g., during transition)
+                break
+
+            @unknown default:
+                break
+            }
         }
     }
     
