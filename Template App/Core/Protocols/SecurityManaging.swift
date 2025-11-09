@@ -18,6 +18,9 @@ protocol SecurityManaging {
     /// Retrieves data from the keychain
     func getFromKeychain(forKey key: String) -> Data?
 
+    /// Deletes data from the keychain
+    func deleteFromKeychain(forKey key: String)
+
     /// Encrypts data using AES-GCM
     func encrypt(data: Data, with key: SymmetricKey) throws -> Data
 

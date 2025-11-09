@@ -198,6 +198,7 @@ private class MockSecurityManagerForPreview: SecurityManaging {
 
     func storeInKeychain(_ data: Data, forKey key: String) -> Bool { true }
     func getFromKeychain(forKey key: String) -> Data? { nil }
+    func deleteFromKeychain(forKey key: String) { }
     func encrypt(data: Data, with key: SymmetricKey) throws -> Data { data }
     func decrypt(data: Data, with key: SymmetricKey) throws -> Data { data }
 }

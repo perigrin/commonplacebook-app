@@ -229,6 +229,10 @@ class MockSecurityManager: SecurityManaging {
         return nil
     }
 
+    func deleteFromKeychain(forKey key: String) {
+        // No-op for this mock
+    }
+
     func encrypt(data: Data, with key: SymmetricKey) throws -> Data {
         return data
     }
