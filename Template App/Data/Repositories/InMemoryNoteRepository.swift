@@ -45,23 +45,53 @@ actor InMemoryNoteRepository: NoteRepository {
     }
 
     func delete(id: UUID) async throws {
-        // Deletion is idempotent - no error if note doesn't exist
-        notes.removeValue(forKey: id)
+        // Soft delete - set deletedAt timestamp
+        guard var note = notes[id] else {
+            return  // Idempotent - no error if note doesn't exist
+        }
+
+        note.deletedAt = Date()
+        notes[id] = note
     }
 
     func list() async throws -> [Note] {
-        // Return copies of all notes
-        return Array(notes.values)
+        // Return only non-deleted notes
+        return notes.values.filter { !$0.isDeleted }
     }
 
     func search(query: String) async throws -> [Note] {
         let lowercasedQuery = query.lowercased()
 
         return notes.values.filter { note in
+            // Exclude deleted notes
+            guard !note.isDeleted else { return false }
+
             let titleMatch = note.title.lowercased().contains(lowercasedQuery)
             let contentMatch = note.content.lowercased().contains(lowercasedQuery)
             return titleMatch || contentMatch
         }
+    }
+
+    // MARK: - Trash Management
+
+    func listTrashed() async throws -> [Note] {
+        // Return only deleted notes
+        return notes.values.filter { $0.isDeleted }
+    }
+
+    func restore(id: UUID) async throws {
+        // Restore a deleted note
+        guard var note = notes[id] else {
+            throw RepositoryError.noteNotFound(id)
+        }
+
+        note.deletedAt = nil
+        notes[id] = note
+    }
+
+    func purge(id: UUID) async throws {
+        // Hard delete - permanently remove
+        notes.removeValue(forKey: id)
     }
 
     // MARK: - Additional Utilities

@@ -103,21 +103,26 @@ actor FileSystemNoteRepository: NoteRepository {
         // Load cache if needed
         try await loadCacheIfNeeded()
 
-        // Remove from cache
-        cache.removeValue(forKey: id)
-
-        // Remove file (idempotent - no error if doesn't exist)
-        let filePath = noteFilePath(for: id)
-        if fileManager.fileExists(atPath: filePath.path) {
-            try fileManager.removeItem(at: filePath)
+        // Soft delete - set deletedAt timestamp
+        guard var note = cache[id] else {
+            return  // Idempotent - no error if doesn't exist
         }
+
+        note.deletedAt = Date()
+
+        // Write updated note to disk
+        try await writeNoteToDisk(note: note)
+
+        // Update cache
+        cache[id] = note
     }
 
     func list() async throws -> [Note] {
         // Load cache if needed
         try await loadCacheIfNeeded()
 
-        return Array(cache.values)
+        // Return only non-deleted notes
+        return cache.values.filter { !$0.isDeleted }
     }
 
     func search(query: String) async throws -> [Note] {
@@ -127,9 +132,60 @@ actor FileSystemNoteRepository: NoteRepository {
         let lowercasedQuery = query.lowercased()
 
         return cache.values.filter { note in
+            // Exclude deleted notes
+            guard !note.isDeleted else { return false }
+
             let titleMatch = note.title.lowercased().contains(lowercasedQuery)
             let contentMatch = note.content.lowercased().contains(lowercasedQuery)
             return titleMatch || contentMatch
+        }
+    }
+
+    // MARK: - Trash Management
+
+    func listTrashed() async throws -> [Note] {
+        // Load cache if needed
+        try await loadCacheIfNeeded()
+
+        // Return only deleted notes
+        return cache.values.filter { $0.isDeleted }
+    }
+
+    func restore(id: UUID) async throws {
+        // Ensure directory exists
+        try ensureDirectoryExists()
+
+        // Load cache if needed
+        try await loadCacheIfNeeded()
+
+        // Restore the note
+        guard var note = cache[id] else {
+            throw RepositoryError.noteNotFound(id)
+        }
+
+        note.deletedAt = nil
+
+        // Write updated note to disk
+        try await writeNoteToDisk(note: note)
+
+        // Update cache
+        cache[id] = note
+    }
+
+    func purge(id: UUID) async throws {
+        // Ensure directory exists
+        try ensureDirectoryExists()
+
+        // Load cache if needed
+        try await loadCacheIfNeeded()
+
+        // Remove from cache
+        cache.removeValue(forKey: id)
+
+        // Remove file (idempotent - no error if doesn't exist)
+        let filePath = noteFilePath(for: id)
+        if fileManager.fileExists(atPath: filePath.path) {
+            try fileManager.removeItem(at: filePath)
         }
     }
 
