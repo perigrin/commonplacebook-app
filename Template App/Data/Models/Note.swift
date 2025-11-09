@@ -13,6 +13,13 @@ struct Note: Codable, Equatable, Hashable, Identifiable, Sendable {
     var title: String
     var backlinks: Set<UUID>  // Set for O(1) add/remove/contains
     var unknownFrontmatterFields: [String: AnyCodable]  // Preserve unknown YAML fields with type information
+    var modified: Date  // Track when note was last modified
+    var deletedAt: Date?  // Soft delete timestamp (nil means not deleted)
+
+    /// Check if note is deleted
+    var isDeleted: Bool {
+        return deletedAt != nil
+    }
 
     /// Check if note is valid
     var isValid: Bool {
@@ -37,7 +44,9 @@ struct Note: Codable, Equatable, Hashable, Identifiable, Sendable {
         content: String,
         title: String,
         backlinks: Set<UUID> = [],
-        unknownFrontmatterFields: [String: AnyCodable] = [:]
+        unknownFrontmatterFields: [String: AnyCodable] = [:],
+        modified: Date = Date(),
+        deletedAt: Date? = nil
     ) {
         self.id = id
         self.created = created
@@ -47,6 +56,8 @@ struct Note: Codable, Equatable, Hashable, Identifiable, Sendable {
         self.title = title
         self.backlinks = backlinks
         self.unknownFrontmatterFields = unknownFrontmatterFields
+        self.modified = modified
+        self.deletedAt = deletedAt
     }
 
     /// Add a backlink to this note
@@ -72,6 +83,8 @@ struct Note: Codable, Equatable, Hashable, Identifiable, Sendable {
         hasher.combine(title)
         hasher.combine(backlinks)
         hasher.combine(unknownFrontmatterFields)
+        hasher.combine(modified)
+        hasher.combine(deletedAt)
     }
 
     /// Equality for Equatable conformance
@@ -83,6 +96,8 @@ struct Note: Codable, Equatable, Hashable, Identifiable, Sendable {
                lhs.content == rhs.content &&
                lhs.title == rhs.title &&
                lhs.backlinks == rhs.backlinks &&
-               lhs.unknownFrontmatterFields == rhs.unknownFrontmatterFields
+               lhs.unknownFrontmatterFields == rhs.unknownFrontmatterFields &&
+               lhs.modified == rhs.modified &&
+               lhs.deletedAt == rhs.deletedAt
     }
 }

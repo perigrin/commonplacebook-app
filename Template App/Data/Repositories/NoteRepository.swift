@@ -23,19 +23,36 @@ protocol NoteRepository {
     /// - Throws: RepositoryError.noteNotFound if note doesn't exist
     func update(note: Note) async throws -> Note
 
-    /// Delete a note by ID
+    /// Soft delete a note by ID (sets deletedAt timestamp)
     /// - Parameter id: The UUID of the note to delete
     /// - Throws: Never throws - deletion is idempotent
     func delete(id: UUID) async throws
 
-    /// List all notes
-    /// - Returns: Array of all notes in the repository
+    /// List all non-deleted notes
+    /// - Returns: Array of all notes where deletedAt is nil
     /// - Throws: RepositoryError on storage failures
     func list() async throws -> [Note]
 
-    /// Search notes by query string
+    /// Search notes by query string (excludes deleted notes)
     /// - Parameter query: The search query (case-insensitive)
     /// - Returns: Array of notes matching the query in title or content
     /// - Throws: RepositoryError on storage failures
     func search(query: String) async throws -> [Note]
+
+    // MARK: - Trash Management
+
+    /// List all deleted notes (soft-deleted with deletedAt set)
+    /// - Returns: Array of notes where deletedAt is not nil
+    /// - Throws: RepositoryError on storage failures
+    func listTrashed() async throws -> [Note]
+
+    /// Restore a soft-deleted note (clears deletedAt)
+    /// - Parameter id: The UUID of the note to restore
+    /// - Throws: RepositoryError.noteNotFound if note doesn't exist
+    func restore(id: UUID) async throws
+
+    /// Permanently delete a note (hard delete)
+    /// - Parameter id: The UUID of the note to purge
+    /// - Throws: Never throws - purge is idempotent
+    func purge(id: UUID) async throws
 }
