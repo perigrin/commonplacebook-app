@@ -14,9 +14,9 @@ The [Yams library](https://github.com/jpsim/Yams) is a production-ready YAML par
 
 ### Option 1: Via Xcode (Recommended)
 
-1. Open `Template App.xcodeproj` in Xcode
+1. Open `Commonplace Book.xcodeproj` in Xcode
 2. Select the project in the navigator
-3. Select the "Template App" target
+3. Select the "Commonplace Book" target
 4. Go to "Package Dependencies" tab
 5. Click the "+" button
 6. Enter the repository URL: `https://github.com/jpsim/Yams`
