@@ -37,6 +37,12 @@ jobs:
       - name: Install xcpretty
         run: gem install xcpretty
 
+      - name: Resolve SPM dependencies
+        run: |
+          xcodebuild -resolvePackageDependencies \
+            -project "Commonplace Book.xcodeproj" \
+            -scheme "Commonplace Book"
+
       - name: Build for iOS Simulator
         run: |
           set -o pipefail
@@ -73,6 +79,12 @@ jobs:
 
       - name: Install xcpretty
         run: gem install xcpretty
+
+      - name: Resolve SPM dependencies
+        run: |
+          xcodebuild -resolvePackageDependencies \
+            -project "Commonplace Book.xcodeproj" \
+            -scheme "Commonplace Book"
 
       - name: Build for macOS
         run: |
