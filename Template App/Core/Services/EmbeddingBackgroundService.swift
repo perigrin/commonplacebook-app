@@ -157,7 +157,7 @@ class EmbeddingBackgroundService {
 
             } catch {
                 // Log error and handle retry
-                print("Error processing note \(noteId): \(error)")
+                Logger.error("Error processing note \(noteId): \(error.localizedDescription)", category: .embedding)
 
                 await MainActor.run {
                     let retryCount = failedNotes[noteId] ?? 0
@@ -251,7 +251,7 @@ class EmbeddingBackgroundService {
             try jsonData.write(to: embeddingsFile)
 
         } catch {
-            print("Error persisting embeddings: \(error)")
+            Logger.error("Error persisting embeddings: \(error.localizedDescription)", category: .embedding)
         }
     }
 
@@ -307,7 +307,7 @@ class EmbeddingBackgroundService {
             }
 
         } catch {
-            print("Error loading embeddings: \(error)")
+            Logger.error("Error loading embeddings: \(error.localizedDescription)", category: .embedding)
         }
     }
 

@@ -19,10 +19,20 @@ class BiometricAuthService: ObservableObject {
     /// Whether to show passcode fallback
     @Published private(set) var shouldShowPasscodeFallback: Bool = false
 
+    /// Whether an authentication attempt is in progress (prevents concurrent auth)
+    private var isAuthenticating: Bool = false
+
     // MARK: - Dependencies
 
     private let securityManager: SecurityManaging
     private let userDefaults: UserDefaults
+
+    // MARK: - Rate Limiting
+
+    private var failedAttempts: Int = 0
+    private var lastFailedAttempt: Date?
+    private let maxAttemptsBeforeDelay = 3
+    private let lockoutDuration: TimeInterval = 60 // 1 minute
 
     // MARK: - UserDefaults Keys
 
@@ -73,15 +83,63 @@ class BiometricAuthService: ObservableObject {
         return await authenticate(reason: "Unlock \(Bundle.main.displayName)")
     }
 
+    /// Check if rate limiting is in effect
+    /// - Returns: True if too many failed attempts, false if attempts are allowed
+    private func isRateLimited() -> Bool {
+        guard let lastAttempt = lastFailedAttempt else { return false }
+
+        if failedAttempts >= maxAttemptsBeforeDelay {
+            let timeSinceLastAttempt = Date().timeIntervalSince(lastAttempt)
+            if timeSinceLastAttempt < lockoutDuration {
+                Logger.warning("Authentication rate limited: \(failedAttempts) failed attempts", category: .security)
+                return true
+            } else {
+                // Lockout period expired, reset counter
+                failedAttempts = 0
+                lastFailedAttempt = nil
+                return false
+            }
+        }
+
+        return false
+    }
+
+    /// Record a failed authentication attempt
+    private func recordFailedAttempt() {
+        failedAttempts += 1
+        lastFailedAttempt = Date()
+        Logger.warning("Failed authentication attempt \(failedAttempts)", category: .security)
+    }
+
+    /// Reset failed attempt counter after successful authentication
+    private func resetFailedAttempts() {
+        failedAttempts = 0
+        lastFailedAttempt = nil
+    }
+
     /// Authenticate with biometrics
     /// - Parameter reason: The reason to display to the user
     /// - Returns: True if authentication was successful
     func authenticate(reason: String) async -> Bool {
+        // Prevent concurrent authentication attempts (race condition protection)
+        guard !isAuthenticating else {
+            Logger.warning("Authentication already in progress, ignoring concurrent request", category: .security)
+            return false
+        }
+
+        // Check rate limiting
+        guard !isRateLimited() else {
+            return false
+        }
+
         guard isBiometricAvailable() else {
             // No biometrics available, unlock immediately
             isLocked = false
             return true
         }
+
+        isAuthenticating = true
+        defer { isAuthenticating = false }
 
         return await withCheckedContinuation { continuation in
             securityManager.authenticateWithBiometrics(reason: reason) { [weak self] success, error in
@@ -94,10 +152,51 @@ class BiometricAuthService: ObservableObject {
                     if success {
                         self.isLocked = false
                         self.shouldShowPasscodeFallback = false
+                        self.resetFailedAttempts()
                         continuation.resume(returning: true)
                     } else {
                         // Authentication failed, offer passcode fallback
+                        self.recordFailedAttempt()
                         self.shouldShowPasscodeFallback = true
+                        continuation.resume(returning: false)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Authenticate with device passcode as fallback
+    /// - Returns: True if authentication was successful
+    func authenticateWithDevicePasscode() async -> Bool {
+        // Prevent concurrent authentication attempts (race condition protection)
+        guard !isAuthenticating else {
+            Logger.warning("Authentication already in progress, ignoring concurrent passcode request", category: .security)
+            return false
+        }
+
+        // Check rate limiting
+        guard !isRateLimited() else {
+            return false
+        }
+
+        isAuthenticating = true
+        defer { isAuthenticating = false }
+
+        return await withCheckedContinuation { continuation in
+            securityManager.authenticateWithDevicePasscode(reason: "Unlock \(Bundle.main.displayName)") { [weak self] success, error in
+                Task { @MainActor in
+                    guard let self = self else {
+                        continuation.resume(returning: false)
+                        return
+                    }
+
+                    if success {
+                        self.isLocked = false
+                        self.shouldShowPasscodeFallback = false
+                        self.resetFailedAttempts()
+                        continuation.resume(returning: true)
+                    } else {
+                        self.recordFailedAttempt()
                         continuation.resume(returning: false)
                     }
                 }

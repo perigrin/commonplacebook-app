@@ -12,6 +12,9 @@ protocol SecurityManaging {
     /// Authenticates with biometrics
     func authenticateWithBiometrics(reason: String, completion: @escaping (Bool, Error?) -> Void)
 
+    /// Authenticates with device passcode (fallback method)
+    func authenticateWithDevicePasscode(reason: String, completion: @escaping (Bool, Error?) -> Void)
+
     /// Stores data securely in the keychain
     func storeInKeychain(_ data: Data, forKey key: String) -> Bool
 

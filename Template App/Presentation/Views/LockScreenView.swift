@@ -59,9 +59,10 @@ struct LockScreenView: View {
                 // Passcode fallback (if shown)
                 if authService.shouldShowPasscodeFallback {
                     Button("Enter Passcode") {
-                        // TODO: Implement passcode fallback
-                        // For now, just unlock (production should show passcode entry)
-                        authService.unlock()
+                        Task {
+                            // Use device passcode authentication as fallback
+                            await authService.authenticateWithDevicePasscode()
+                        }
                     }
                     .font(.subheadline)
                     .foregroundColor(.accentColor)

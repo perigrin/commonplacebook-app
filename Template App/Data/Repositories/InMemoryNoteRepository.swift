@@ -45,12 +45,14 @@ actor InMemoryNoteRepository: NoteRepository {
     }
 
     func delete(id: UUID) async throws {
-        // Soft delete - set deletedAt timestamp
+        // Soft delete - set deletedAt timestamp and update modified
         guard var note = notes[id] else {
             return  // Idempotent - no error if note doesn't exist
         }
 
-        note.deletedAt = Date()
+        let now = Date()
+        note.deletedAt = now
+        note.modified = now
         notes[id] = note
     }
 
@@ -80,12 +82,13 @@ actor InMemoryNoteRepository: NoteRepository {
     }
 
     func restore(id: UUID) async throws {
-        // Restore a deleted note
+        // Restore a deleted note and update modified timestamp
         guard var note = notes[id] else {
             throw RepositoryError.noteNotFound(id)
         }
 
         note.deletedAt = nil
+        note.modified = Date()
         notes[id] = note
     }
 

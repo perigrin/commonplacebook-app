@@ -103,12 +103,14 @@ actor FileSystemNoteRepository: NoteRepository {
         // Load cache if needed
         try await loadCacheIfNeeded()
 
-        // Soft delete - set deletedAt timestamp
+        // Soft delete - set deletedAt timestamp and update modified
         guard var note = cache[id] else {
             return  // Idempotent - no error if doesn't exist
         }
 
-        note.deletedAt = Date()
+        let now = Date()
+        note.deletedAt = now
+        note.modified = now
 
         // Write updated note to disk
         try await writeNoteToDisk(note: note)
@@ -158,12 +160,13 @@ actor FileSystemNoteRepository: NoteRepository {
         // Load cache if needed
         try await loadCacheIfNeeded()
 
-        // Restore the note
+        // Restore the note and update modified timestamp
         guard var note = cache[id] else {
             throw RepositoryError.noteNotFound(id)
         }
 
         note.deletedAt = nil
+        note.modified = Date()
 
         // Write updated note to disk
         try await writeNoteToDisk(note: note)

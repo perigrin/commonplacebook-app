@@ -136,8 +136,8 @@ actor EncryptionService {
     /// Disable database encryption
     /// WARNING: This will remove the encryption key. Ensure database is decrypted first.
     func disableEncryption() {
-        // Clear cached key
-        cachedKey = nil
+        // Clear cached key securely
+        clearCachedKey()
 
         // Remove key from keychain
         securityManager.deleteFromKeychain(forKey: encryptionKeyIdentifier)
@@ -147,6 +147,31 @@ actor EncryptionService {
         userDefaults.set(false, forKey: encryptionEnabledKey)
 
         Logger.info("Database encryption disabled", category: .security)
+    }
+
+    /// Clear cached encryption key from memory (security best practice)
+    /// Call this when app enters background or when key is no longer needed
+    func clearCachedKey() {
+        if cachedKey != nil {
+            // Clear the reference to allow deallocation
+            cachedKey = nil
+            Logger.debug("Cleared cached encryption key from memory", category: .security)
+        }
+    }
+
+    /// Restore cached key from keychain (after clearing)
+    /// - Returns: True if key was successfully restored
+    func restoreCachedKey() -> Bool {
+        guard isEncryptionEnabled else { return false }
+
+        guard let keyData = securityManager.getFromKeychain(forKey: encryptionKeyIdentifier) else {
+            Logger.error("Failed to restore cached key: key not found in keychain", category: .security)
+            return false
+        }
+
+        cachedKey = SymmetricKey(data: keyData)
+        Logger.debug("Restored cached encryption key from keychain", category: .security)
+        return true
     }
 
     // MARK: - Key Rotation

@@ -390,12 +390,14 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
         markActive(id: id)
         defer { markInactive(id: id) }
 
-        // Soft delete - set deletedAt timestamp
+        // Soft delete - set deletedAt timestamp and update modified
         guard var note = try await read(id: id) else {
             return  // Idempotent - no error if doesn't exist
         }
 
-        note.deletedAt = Date()
+        let now = Date()
+        note.deletedAt = now
+        note.modified = now
 
         // Update note in CRDT and database
         guard let existingDoc = try await loadDocument(id: id) else {
@@ -585,12 +587,13 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
         markActive(id: id)
         defer { markInactive(id: id) }
 
-        // Restore the note by clearing deletedAt
+        // Restore the note by clearing deletedAt and updating modified timestamp
         guard var note = try await read(id: id) else {
             throw RepositoryError.noteNotFound(id)
         }
 
         note.deletedAt = nil
+        note.modified = Date()
 
         // Update note in CRDT and database
         guard let existingDoc = try await loadDocument(id: id) else {

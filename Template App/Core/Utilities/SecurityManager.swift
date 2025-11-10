@@ -45,10 +45,32 @@ class SecurityManager {
         case none
     }
     
-    /// Keychain access options
+    /// Keychain access options (standard protection)
     private let accessOptions: [String: Any] = [
         kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
     ]
+
+    /// Keychain access options with biometric protection
+    /// Keys stored with this option require biometric authentication to access
+    private var biometricProtectedAccessOptions: [String: Any]? {
+        #if os(iOS)
+        guard let accessControl = SecAccessControlCreateWithFlags(
+            nil,
+            kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+            .biometryCurrentSet, // Requires biometric auth, invalidates if biometrics change
+            nil
+        ) else {
+            Logger.error("Failed to create biometric access control", category: .security)
+            return nil
+        }
+
+        return [
+            kSecAttrAccessControl as String: accessControl
+        ]
+        #else
+        return accessOptions
+        #endif
+    }
     
     /// Private initializer to enforce singleton pattern
     private init() {}
@@ -94,18 +116,52 @@ class SecurityManager {
             kSecAttrAccount as String: key,
             kSecValueData as String: data
         ].merging(accessOptions) { (_, new) in new }
-        
+
         // First, delete any existing item
         SecItemDelete(query as CFDictionary)
-        
+
         // Then add the new item
         let status = SecItemAdd(query as CFDictionary, nil)
-        
+
         if status != errSecSuccess {
             Logger.error("Failed to store item in keychain: \(SecCopyErrorMessageString(status, nil) as String? ?? "Unknown error")", category: .security)
             return false
         }
-        
+
+        return true
+    }
+
+    /// Stores data securely in the keychain with biometric protection
+    /// - Parameters:
+    ///   - data: The data to store
+    ///   - key: The key to store the data under
+    /// - Returns: True if the operation was successful
+    @discardableResult
+    func storeInKeychainWithBiometricProtection(_ data: Data, forKey key: String) -> Bool {
+        guard let protectedOptions = biometricProtectedAccessOptions else {
+            Logger.error("Biometric protection not available, falling back to standard storage", category: .security)
+            return storeInKeychain(data, forKey: key)
+        }
+
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: serviceName,
+            kSecAttrAccount as String: key,
+            kSecValueData as String: data
+        ].merging(protectedOptions) { (_, new) in new }
+
+        // First, delete any existing item
+        SecItemDelete(query as CFDictionary)
+
+        // Then add the new item with biometric protection
+        let status = SecItemAdd(query as CFDictionary, nil)
+
+        if status != errSecSuccess {
+            Logger.error("Failed to store biometric-protected item in keychain: \(SecCopyErrorMessageString(status, nil) as String? ?? "Unknown error")", category: .security)
+            return false
+        }
+
+        Logger.info("Stored item with biometric protection: \(key)", category: .security)
         return true
     }
     
@@ -184,7 +240,12 @@ class SecurityManager {
     func encrypt(data: Data, with key: SymmetricKey) throws -> Data {
         do {
             let sealedBox = try AES.GCM.seal(data, using: key)
-            return sealedBox.combined!
+            guard let combined = sealedBox.combined else {
+                let error = NSError(domain: "SecurityManager", code: -3, userInfo: [NSLocalizedDescriptionKey: "Failed to combine sealed box components"])
+                Logger.error("Encryption failed: Unable to combine sealed box", category: .security)
+                throw error
+            }
+            return combined
         } catch {
             Logger.error("Encryption failed: \(error.localizedDescription)", category: .security)
             throw error
@@ -242,7 +303,7 @@ class SecurityManager {
         return SymmetricKey(size: .bits256)
     }
     
-    /// Stores an encryption key in the keychain
+    /// Stores an encryption key in the keychain with biometric protection
     /// - Parameters:
     ///   - key: The key to store
     ///   - identifier: The identifier for the key
@@ -250,7 +311,8 @@ class SecurityManager {
     @discardableResult
     func storeKey(_ key: SymmetricKey, withIdentifier identifier: String) -> Bool {
         let data = key.withUnsafeBytes { Data($0) }
-        return storeInKeychain(data, forKey: "key_\(identifier)")
+        // Use biometric protection for encryption keys (sensitive data)
+        return storeInKeychainWithBiometricProtection(data, forKey: "key_\(identifier)")
     }
     
     /// Retrieves an encryption key from the keychain
@@ -321,7 +383,7 @@ class SecurityManager {
     func authenticateWithBiometrics(reason: String, completion: @escaping (Bool, Error?) -> Void) {
         let context = LAContext()
         var error: NSError?
-        
+
         if context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) {
             context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: reason) { success, error in
                 DispatchQueue.main.async {
@@ -330,13 +392,42 @@ class SecurityManager {
                     } else if let error = error {
                         Logger.error("Biometric authentication failed: \(error.localizedDescription)", category: .security)
                     }
-                    
+
                     completion(success, error)
                 }
             }
         } else {
             DispatchQueue.main.async {
                 Logger.error("Biometric authentication not available: \(error?.localizedDescription ?? "Unknown error")", category: .security)
+                completion(false, error)
+            }
+        }
+    }
+
+    /// Authenticates with device passcode (fallback method)
+    /// - Parameters:
+    ///   - reason: The reason for authentication
+    ///   - completion: The completion handler
+    func authenticateWithDevicePasscode(reason: String, completion: @escaping (Bool, Error?) -> Void) {
+        let context = LAContext()
+        var error: NSError?
+
+        // Use deviceOwnerAuthentication which allows both biometrics and passcode
+        if context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) {
+            context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason) { success, error in
+                DispatchQueue.main.async {
+                    if success {
+                        Logger.info("Device passcode authentication successful", category: .security)
+                    } else if let error = error {
+                        Logger.error("Device passcode authentication failed: \(error.localizedDescription)", category: .security)
+                    }
+
+                    completion(success, error)
+                }
+            }
+        } else {
+            DispatchQueue.main.async {
+                Logger.error("Device passcode authentication not available: \(error?.localizedDescription ?? "Unknown error")", category: .security)
                 completion(false, error)
             }
         }
@@ -559,8 +650,10 @@ extension SymmetricKey {
     /// Initialize a symmetric key from data
     /// - Parameter data: The key data
     init(data: Data) {
-        // Use the base initializer with appropriate size
-        self = SymmetricKey(size: .bits256) // Default to 256 bits
-        // Note: This is a simplified version, in a real app you would properly derive the key
+        // Properly initialize from the actual data bytes
+        self = data.withUnsafeBytes { bytes in
+            let bufferPointer = bytes.bindMemory(to: UInt8.self)
+            return SymmetricKey(data: bufferPointer)
+        }
     }
 }

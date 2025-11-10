@@ -84,7 +84,7 @@ class NoteViewModel: ObservableObject {
         }
 
         do {
-            // Create note with current values
+            // Create note with current values (update modified timestamp on save)
             let noteToSave = Note(
                 id: id,
                 created: created,
@@ -93,7 +93,8 @@ class NoteViewModel: ObservableObject {
                 content: content,
                 title: title,
                 backlinks: Set(backlinks),
-                unknownFrontmatterFields: unknownFrontmatterFields
+                unknownFrontmatterFields: unknownFrontmatterFields,
+                modified: Date() // Always update modified timestamp when saving
             )
 
             // Call create() for new notes, update() for existing

@@ -124,19 +124,48 @@ class TrashService: ObservableObject {
 
     // MARK: - Scheduled Purge
 
+    /// Timer for periodic auto-purge (24 hour interval)
+    private var autoPurgeTimer: Timer?
+
     /// Schedule automatic purge to run periodically
-    /// Note: This should be called from app lifecycle hooks
+    /// Uses Timer for reliable, cancellable periodic execution
     func scheduleAutoPurge() {
+        // Cancel existing timer if any
+        stopAutoPurge()
+
+        // Run initial purge
         Task {
-            // Run purge immediately
-            try? await purgeOld()
-
-            // Schedule next purge (every 24 hours)
-            // In production, use a more robust scheduling mechanism
-            try? await Task.sleep(nanoseconds: 24 * 60 * 60 * 1_000_000_000)
-
-            // Recursive call for continuous scheduling
-            scheduleAutoPurge()
+            do {
+                try await purgeOld()
+                Logger.info("Initial auto-purge completed", category: .general)
+            } catch {
+                Logger.error("Initial auto-purge failed: \(error.localizedDescription)", category: .general)
+            }
         }
+
+        // Schedule periodic purge every 24 hours
+        autoPurgeTimer = Timer.scheduledTimer(withTimeInterval: 24 * 60 * 60, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                do {
+                    try await self?.purgeOld()
+                    Logger.info("Scheduled auto-purge completed", category: .general)
+                } catch {
+                    Logger.error("Scheduled auto-purge failed: \(error.localizedDescription)", category: .general)
+                }
+            }
+        }
+
+        Logger.info("Auto-purge timer scheduled (24 hour interval)", category: .general)
+    }
+
+    /// Stop automatic purge timer
+    func stopAutoPurge() {
+        autoPurgeTimer?.invalidate()
+        autoPurgeTimer = nil
+        Logger.info("Auto-purge timer stopped", category: .general)
+    }
+
+    deinit {
+        stopAutoPurge()
     }
 }

@@ -234,8 +234,10 @@ struct SearchResultsListView: View {
                         loadedNotes = notes
                     }
                 } catch {
-                    // Handle error silently for now
-                    // Could add error state here
+                    // Log error and clear results
+                    if !Task.isCancelled {
+                        Logger.error("Failed to load search results: \(error.localizedDescription)", category: .database)
+                    }
                     if !Task.isCancelled && currentGeneration == loadGeneration {
                         loadedNotes = []
                     }
@@ -266,8 +268,13 @@ struct SearchResultsListView: View {
             let batchNotes = await withTaskGroup(of: (UUID, Note?).self) { group in
                 for result in batch {
                     group.addTask {
-                        let note = try? await searchViewModel.repository.read(id: result.noteId)
-                        return (result.noteId, note)
+                        do {
+                            let note = try await searchViewModel.repository.read(id: result.noteId)
+                            return (result.noteId, note)
+                        } catch {
+                            Logger.error("Failed to load note \(result.noteId): \(error.localizedDescription)", category: .database)
+                            return (result.noteId, nil)
+                        }
                     }
                 }
 
