@@ -3,14 +3,16 @@
 
 import Foundation
 import CryptoKit
+import Combine
 
 /// Service managing encryption keys and database encryption
-actor EncryptionService {
+@MainActor
+class EncryptionService: ObservableObject {
 
     // MARK: - Properties
 
     /// Whether encryption is currently enabled
-    private(set) var isEncryptionEnabled: Bool
+    @Published private(set) var isEncryptionEnabled: Bool
 
     /// Current encryption key (cached in memory when encryption is enabled)
     private var cachedKey: SymmetricKey?

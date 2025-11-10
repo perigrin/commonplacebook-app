@@ -135,14 +135,14 @@ class NoteFileFormatter {
         return Note(
             id: id,
             created: created,
-            modified: modified,
             device: device,
             location: location,
             content: components.content,
             title: title,
             backlinks: backlinks,
-            deletedAt: deletedAt,
-            unknownFrontmatterFields: unknownFields
+            unknownFrontmatterFields: unknownFields,
+            modified: modified,
+            deletedAt: deletedAt
         )
     }
 

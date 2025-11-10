@@ -30,7 +30,7 @@ class ItemRepository: CoreDataRepository {
         
         return Future<[Item], Error> { [weak self] promise in
             guard let self = self else {
-                promise(.failure(RepositoryError.fetchFailed(NSError())))
+                promise(.failure(ItemRepositoryError.fetchFailed(NSError())))
                 return
             }
             
@@ -40,7 +40,7 @@ class ItemRepository: CoreDataRepository {
                     promise(.success(items))
                 } catch {
                     Logger.error("Failed to fetch items: \(error.localizedDescription)", category: .database)
-                    promise(.failure(RepositoryError.fetchFailed(error)))
+                    promise(.failure(ItemRepositoryError.fetchFailed(error)))
                 }
             }
         }.eraseToAnyPublisher()
@@ -56,7 +56,7 @@ class ItemRepository: CoreDataRepository {
         
         return Future<[Item], Error> { [weak self] promise in
             guard let self = self else {
-                promise(.failure(RepositoryError.fetchFailed(NSError())))
+                promise(.failure(ItemRepositoryError.fetchFailed(NSError())))
                 return
             }
             
@@ -66,7 +66,7 @@ class ItemRepository: CoreDataRepository {
                     promise(.success(items))
                 } catch {
                     Logger.error("Failed to fetch items with predicate: \(error.localizedDescription)", category: .database)
-                    promise(.failure(RepositoryError.fetchFailed(error)))
+                    promise(.failure(ItemRepositoryError.fetchFailed(error)))
                 }
             }
         }.eraseToAnyPublisher()
@@ -113,7 +113,7 @@ class ItemRepository: CoreDataRepository {
     func save(entity: Item) -> AnyPublisher<Item, Error> {
         return Future<Item, Error> { [weak self] promise in
             guard let self = self else {
-                promise(.failure(RepositoryError.saveFailed(NSError())))
+                promise(.failure(ItemRepositoryError.saveFailed(NSError())))
                 return
             }
             
@@ -123,7 +123,7 @@ class ItemRepository: CoreDataRepository {
                     promise(.success(entity))
                 } catch {
                     Logger.error("Failed to save item: \(error.localizedDescription)", category: .database)
-                    promise(.failure(RepositoryError.saveFailed(error)))
+                    promise(.failure(ItemRepositoryError.saveFailed(error)))
                 }
             }
         }.eraseToAnyPublisher()
@@ -138,7 +138,7 @@ class ItemRepository: CoreDataRepository {
     func createItem(title: String, description: String = "", category: String = "Uncategorized") -> AnyPublisher<Item, Error> {
         return Future<Item, Error> { [weak self] promise in
             guard let self = self else {
-                promise(.failure(RepositoryError.saveFailed(NSError())))
+                promise(.failure(ItemRepositoryError.saveFailed(NSError())))
                 return
             }
             
@@ -155,7 +155,7 @@ class ItemRepository: CoreDataRepository {
                     promise(.success(item))
                 } catch {
                     Logger.error("Failed to create item: \(error.localizedDescription)", category: .database)
-                    promise(.failure(RepositoryError.saveFailed(error)))
+                    promise(.failure(ItemRepositoryError.saveFailed(error)))
                 }
             }
         }.eraseToAnyPublisher()
@@ -167,7 +167,7 @@ class ItemRepository: CoreDataRepository {
     func update(entity: Item) -> AnyPublisher<Item, Error> {
         return Future<Item, Error> { [weak self] promise in
             guard let self = self else {
-                promise(.failure(RepositoryError.updateFailed(NSError())))
+                promise(.failure(ItemRepositoryError.updateFailed(NSError())))
                 return
             }
             
@@ -177,7 +177,7 @@ class ItemRepository: CoreDataRepository {
                     promise(.success(entity))
                 } catch {
                     Logger.error("Failed to update item: \(error.localizedDescription)", category: .database)
-                    promise(.failure(RepositoryError.updateFailed(error)))
+                    promise(.failure(ItemRepositoryError.updateFailed(error)))
                 }
             }
         }.eraseToAnyPublisher()
@@ -205,7 +205,7 @@ class ItemRepository: CoreDataRepository {
     func delete(entity: Item) -> AnyPublisher<Void, Error> {
         return Future<Void, Error> { [weak self] promise in
             guard let self = self else {
-                promise(.failure(RepositoryError.deleteFailed(NSError())))
+                promise(.failure(ItemRepositoryError.deleteFailed(NSError())))
                 return
             }
             
@@ -217,7 +217,7 @@ class ItemRepository: CoreDataRepository {
                     promise(.success(()))
                 } catch {
                     Logger.error("Failed to delete item: \(error.localizedDescription)", category: .database)
-                    promise(.failure(RepositoryError.deleteFailed(error)))
+                    promise(.failure(ItemRepositoryError.deleteFailed(error)))
                 }
             }
         }.eraseToAnyPublisher()
@@ -231,7 +231,7 @@ class ItemRepository: CoreDataRepository {
     func batchUpdate(propertiesToUpdate: [String: Any], predicate: NSPredicate) -> AnyPublisher<Int, Error> {
         return Future<Int, Error> { [weak self] promise in
             guard let self = self else {
-                promise(.failure(RepositoryError.updateFailed(NSError())))
+                promise(.failure(ItemRepositoryError.updateFailed(NSError())))
                 return
             }
             
@@ -255,7 +255,7 @@ class ItemRepository: CoreDataRepository {
                     promise(.success(objectIDs.count))
                 } catch {
                     Logger.error("Failed to perform batch update: \(error.localizedDescription)", category: .database)
-                    promise(.failure(RepositoryError.updateFailed(error)))
+                    promise(.failure(ItemRepositoryError.updateFailed(error)))
                 }
             }
         }.eraseToAnyPublisher()
@@ -267,7 +267,7 @@ class ItemRepository: CoreDataRepository {
     func batchDelete(predicate: NSPredicate) -> AnyPublisher<Int, Error> {
         return Future<Int, Error> { [weak self] promise in
             guard let self = self else {
-                promise(.failure(RepositoryError.deleteFailed(NSError())))
+                promise(.failure(ItemRepositoryError.deleteFailed(NSError())))
                 return
             }
             
@@ -292,7 +292,7 @@ class ItemRepository: CoreDataRepository {
                     promise(.success(objectIDs.count))
                 } catch {
                     Logger.error("Failed to perform batch delete: \(error.localizedDescription)", category: .database)
-                    promise(.failure(RepositoryError.deleteFailed(error)))
+                    promise(.failure(ItemRepositoryError.deleteFailed(error)))
                 }
             }
         }.eraseToAnyPublisher()

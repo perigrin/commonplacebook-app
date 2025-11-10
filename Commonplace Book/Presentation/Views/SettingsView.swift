@@ -2,6 +2,7 @@
 // ABOUTME: Manages privacy, security, search, trash, and app information settings
 
 import SwiftUI
+import CryptoKit
 
 /// Main settings view for the application
 struct SettingsView: View {
@@ -28,7 +29,6 @@ struct SettingsView: View {
             aboutSection
         }
         .navigationTitle("Settings")
-        .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showingTrash) {
             NavigationStack {
                 TrashView(trashService: trashService)
@@ -279,7 +279,6 @@ struct AboutView: View {
             }
         }
         .navigationTitle("About")
-        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
@@ -352,7 +351,7 @@ private class MockSecurityManagerForPreview: SecurityManaging {
     }
     func storeInKeychain(_ data: Data, forKey key: String) -> Bool { true }
     func getFromKeychain(forKey key: String) -> Data? { nil }
-    func deleteFromKeychain(forKey key: String) { }
+    func deleteFromKeychain(forKey key: String) -> Bool { true }
     func encrypt(data: Data, with key: SymmetricKey) throws -> Data { data }
     func decrypt(data: Data, with key: SymmetricKey) throws -> Data { data }
 }

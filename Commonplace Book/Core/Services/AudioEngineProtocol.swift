@@ -48,25 +48,30 @@ class ProductionAudioEngine: AudioEngineProtocol {
     }
 }
 
-/// Protocol abstracting AVAudioSession for testing
+/// Protocol abstracting audio session management for testing
+/// Note: macOS doesn't require explicit audio session management like iOS
 protocol AudioSessionProtocol {
-    func setCategory(_ category: AVAudioSession.Category, mode: AVAudioSession.Mode, options: AVAudioSession.CategoryOptions) throws
-    func setActive(_ active: Bool, options: AVAudioSession.SetActiveOptions) throws
+    func configure() throws
+    func activate() throws
+    func deactivate() throws
 }
 
-/// Production implementation wrapping AVAudioSession
+/// macOS implementation of audio session (no-op since macOS doesn't need session management)
 class ProductionAudioSession: AudioSessionProtocol {
-    private let session: AVAudioSession
-
     init() {
-        self.session = AVAudioSession.sharedInstance()
+        // macOS doesn't require audio session initialization
     }
 
-    func setCategory(_ category: AVAudioSession.Category, mode: AVAudioSession.Mode, options: AVAudioSession.CategoryOptions) throws {
-        try session.setCategory(category, mode: mode, options: options)
+    func configure() throws {
+        // macOS doesn't require audio session configuration
+        // Audio permissions are handled at the system level
     }
 
-    func setActive(_ active: Bool, options: AVAudioSession.SetActiveOptions) throws {
-        try session.setActive(active, options: options)
+    func activate() throws {
+        // macOS doesn't require explicit activation
+    }
+
+    func deactivate() throws {
+        // macOS doesn't require explicit deactivation
     }
 }

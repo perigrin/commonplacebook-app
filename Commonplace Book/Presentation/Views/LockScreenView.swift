@@ -2,6 +2,7 @@
 // ABOUTME: Shows Face ID/Touch ID prompt and handles unlock attempts
 
 import SwiftUI
+import CryptoKit
 
 /// Lock screen overlay for biometric authentication
 struct LockScreenView: View {
