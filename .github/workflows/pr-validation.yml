@@ -4,9 +4,9 @@ on:
   pull_request:
     branches: [ main, develop ]
     paths:
-      - 'Template App/**'
-      - 'Template AppTests/**'
-      - 'Template AppUITests/**'
+      - 'Commonplace Book/**'
+      - 'Commonplace BookTests/**'
+      - 'Commonplace BookUITests/**'
       - '*.xcodeproj/**'
       - '.github/workflows/**'
 
@@ -33,7 +33,7 @@ jobs:
       - name: Build for iOS
         run: |
           set -o pipefail
-          xcodebuild clean build -workspace "Template App.xcworkspace" -scheme "Template App" -destination "platform=iOS Simulator,name=iPhone 14" | xcpretty
+          xcodebuild clean build -workspace "Commonplace Book.xcworkspace" -scheme "Commonplace Book" -destination "platform=iOS Simulator,name=iPhone 14" | xcpretty
         
       - name: SwiftLint
         run: |
@@ -48,12 +48,12 @@ jobs:
       - name: Run Tests
         run: |
           set -o pipefail
-          xcodebuild test -workspace "Template App.xcworkspace" -scheme "Template App" -destination "platform=iOS Simulator,name=iPhone 14" | xcpretty
+          xcodebuild test -workspace "Commonplace Book.xcworkspace" -scheme "Commonplace Book" -destination "platform=iOS Simulator,name=iPhone 14" | xcpretty
         
       - name: Gather Code Coverage
         run: |
           set -o pipefail
-          xcodebuild test -workspace "Template App.xcworkspace" -scheme "Template App" -destination "platform=iOS Simulator,name=iPhone 14" -enableCodeCoverage YES | xcpretty
+          xcodebuild test -workspace "Commonplace Book.xcworkspace" -scheme "Commonplace Book" -destination "platform=iOS Simulator,name=iPhone 14" -enableCodeCoverage YES | xcpretty
         
       - name: Upload Code Coverage Report
         uses: codecov/codecov-action@v3

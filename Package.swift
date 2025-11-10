@@ -25,9 +25,9 @@ let package = Package(
                 .product(name: "Automerge", package: "automerge-swift"),
                 .product(name: "SQLite", package: "SQLite.swift")
             ],
-            path: "Template App",
+            path: "Commonplace Book",
             exclude: [
-                "App/Template_AppApp.swift",
+                "App/Commonplace_BookApp.swift",
                 "App/SceneDelegate.swift",
                 "Features",
                 "Resources"
@@ -36,7 +36,7 @@ let package = Package(
         .testTarget(
             name: "CommonplaceBookTests",
             dependencies: ["CommonplaceBook"],
-            path: "Template AppTests"
+            path: "Commonplace BookTests"
         ),
     ]
 )

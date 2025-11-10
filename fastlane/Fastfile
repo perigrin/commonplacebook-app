@@ -20,8 +20,8 @@ platform :ios do
   desc "Run all tests"
   lane :tests do
     run_tests(
-      workspace: "Template App.xcworkspace",
-      scheme: "Template App",
+      workspace: "Commonplace Book.xcworkspace",
+      scheme: "Commonplace Book",
       devices: ["iPhone 14"],
       code_coverage: true
     )
@@ -41,8 +41,8 @@ platform :ios do
   desc "Build app for testing"
   lane :build do
     build_app(
-      workspace: "Template App.xcworkspace",
-      scheme: "Template App",
+      workspace: "Commonplace Book.xcworkspace",
+      scheme: "Commonplace Book",
       skip_archive: true,
       skip_codesigning: true
     )
@@ -56,26 +56,26 @@ platform :ios do
     # Increment build number
     increment_build_number(
       build_number: latest_testflight_build_number + 1,
-      xcodeproj: "Template App.xcodeproj"
+      xcodeproj: "Commonplace Book.xcodeproj"
     )
     
     # Commit version bump
     commit_version_bump(
       message: "Bump build number [ci skip]",
-      xcodeproj: "Template App.xcodeproj"
+      xcodeproj: "Commonplace Book.xcodeproj"
     )
     
     # Match for code signing
     sync_code_signing(
       type: "appstore",
-      app_identifier: "com.yourcompany.templateapp",
+      app_identifier: "com.tamarou.commonplacebook",
       readonly: true
     )
     
     # Build the app
     build_app(
-      workspace: "Template App.xcworkspace",
-      scheme: "Template App",
+      workspace: "Commonplace Book.xcworkspace",
+      scheme: "Commonplace Book",
       include_bitcode: true,
       include_symbols: true,
       export_method: "app-store"
@@ -114,14 +114,14 @@ platform :ios do
     # Match for code signing
     sync_code_signing(
       type: "appstore",
-      app_identifier: "com.yourcompany.templateapp",
+      app_identifier: "com.tamarou.commonplacebook",
       readonly: true
     )
     
     # Build the app
     build_app(
-      workspace: "Template App.xcworkspace",
-      scheme: "Template App",
+      workspace: "Commonplace Book.xcworkspace",
+      scheme: "Commonplace Book",
       include_bitcode: true,
       include_symbols: true,
       export_method: "app-store"
