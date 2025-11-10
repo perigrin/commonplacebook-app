@@ -34,17 +34,14 @@ jobs:
         with:
           xcode-version: '26.0.1'
 
-      - name: Install dependencies
-        run: |
-          gem install xcpretty
-          gem install cocoapods
-          pod install --repo-update
+      - name: Install xcpretty
+        run: gem install xcpretty
 
       - name: Build for iOS Simulator
         run: |
           set -o pipefail
           xcodebuild clean build \
-            -workspace "Commonplace Book.xcworkspace" \
+            -project "Commonplace Book.xcodeproj" \
             -scheme "Commonplace Book" \
             -destination "platform=iOS Simulator,name=iPhone 15,OS=latest" \
             -configuration Debug \
@@ -74,17 +71,14 @@ jobs:
         with:
           xcode-version: '26.0.1'
 
-      - name: Install dependencies
-        run: |
-          gem install xcpretty
-          gem install cocoapods
-          pod install --repo-update
+      - name: Install xcpretty
+        run: gem install xcpretty
 
       - name: Build for macOS
         run: |
           set -o pipefail
           xcodebuild clean build \
-            -workspace "Commonplace Book.xcworkspace" \
+            -project "Commonplace Book.xcodeproj" \
             -scheme "Commonplace Book" \
             -destination "platform=macOS,arch=arm64" \
             -configuration Debug \
