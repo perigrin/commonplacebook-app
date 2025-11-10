@@ -1,3 +1,5 @@
+// ABOUTME: Manager for security operations including keychain storage, encryption, and biometric authentication
+// ABOUTME: Provides cross-platform security functionality with iOS-specific biometrics and macOS stubs
 //
 //  SecurityManager.swift
 //  Commonplace Book
@@ -432,8 +434,51 @@ class SecurityManager {
             }
         }
     }
+    #else
+    // MARK: - Biometric Authentication (macOS stubs)
+
+    /// Gets the available biometric authentication type
+    /// - Returns: The biometric type available on the device (always .none on macOS)
+    func getBiometricType() -> BiometricType {
+        // macOS doesn't support biometric authentication in the same way as iOS
+        return .none
+    }
+
+    /// Authenticates with biometrics
+    /// - Parameters:
+    ///   - reason: The reason for authentication
+    ///   - completion: The completion handler
+    func authenticateWithBiometrics(reason: String, completion: @escaping (Bool, Error?) -> Void) {
+        // Biometric authentication is not available on macOS
+        DispatchQueue.main.async {
+            let error = NSError(
+                domain: "SecurityManager",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey: "Biometric authentication is not available on macOS"]
+            )
+            Logger.warning("Biometric authentication requested on macOS: \(reason)", category: .security)
+            completion(false, error)
+        }
+    }
+
+    /// Authenticates with device passcode (fallback method)
+    /// - Parameters:
+    ///   - reason: The reason for authentication
+    ///   - completion: The completion handler
+    func authenticateWithDevicePasscode(reason: String, completion: @escaping (Bool, Error?) -> Void) {
+        // Device passcode authentication is not available on macOS
+        DispatchQueue.main.async {
+            let error = NSError(
+                domain: "SecurityManager",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey: "Device passcode authentication is not available on macOS"]
+            )
+            Logger.warning("Device passcode authentication requested on macOS: \(reason)", category: .security)
+            completion(false, error)
+        }
+    }
     #endif
-    
+
     // MARK: - Jailbreak Detection
     
     /// Checks if the device is jailbroken
