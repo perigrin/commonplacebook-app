@@ -27,8 +27,7 @@ let package = Package(
             ],
             path: "Commonplace Book",
             exclude: [
-                "App/Commonplace_BookApp.swift",
-                "App/SceneDelegate.swift",
+                "App",
                 "Features",
                 "Resources"
             ]
