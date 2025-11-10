@@ -81,8 +81,8 @@ class SpeechRecognitionService: ObservableObject {
 
         // Configure audio session
         do {
-            try audioSession.setCategory(.record, mode: .measurement, options: .duckOthers)
-            try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
+            try audioSession.configure()
+            try audioSession.activate()
         } catch {
             throw SpeechRecognitionError.microphoneUnavailable
         }
@@ -154,7 +154,7 @@ class SpeechRecognitionService: ObservableObject {
         audioEngine.inputNode.removeTap(onBus: 0)
 
         // Deactivate audio session
-        try? audioSession.setActive(false, options: .notifyOthersOnDeactivation)
+        try? audioSession.deactivate()
 
         // Cancel recognition request and task
         recognitionRequest?.endAudio()

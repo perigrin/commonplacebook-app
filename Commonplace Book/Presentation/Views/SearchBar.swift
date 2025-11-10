@@ -19,9 +19,7 @@ struct SearchBar: View {
             TextField("Search notes...", text: $query)
                 .focused($isFocused)
                 .textFieldStyle(.plain)
-                .autocapitalization(.none)
                 .disableAutocorrection(true)
-                .submitLabel(.search)
                 .accessibilityLabel("Search notes")
                 .accessibilityHint("Enter text to search for notes")
 
@@ -42,7 +40,7 @@ struct SearchBar: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .background(Color(.systemGray6))
+        .background(Color.gray.opacity(0.15))
         .cornerRadius(10)
         .padding(.horizontal)
     }

@@ -56,7 +56,7 @@ final class HomeViewModelTests: XCTestCase {
     func testLoadItemsFailure() {
         // Given
         let expectation = XCTestExpectation(description: "Error loading items")
-        let testError = RepositoryError.fetchFailed(NSError(domain: "Test", code: 0, userInfo: nil))
+        let testError = ItemRepositoryError.fetchFailed(NSError(domain: "Test", code: 0, userInfo: nil))
         mockRepository.errorToReturn = testError
         
         // When
@@ -255,6 +255,6 @@ class MockItemRepository: ItemRepository {
             return Just(item).setFailureType(to: Error.self).eraseToAnyPublisher()
         }
         
-        return Fail(error: RepositoryError.invalidEntity).eraseToAnyPublisher()
+        return Fail(error: ItemRepositoryError.invalidEntity).eraseToAnyPublisher()
     }
 }

@@ -183,3 +183,30 @@ struct NoteListView_Previews: PreviewProvider {
         return viewModel
     }
 }
+
+// MARK: - Preview Helpers
+
+#if DEBUG
+/// Mock metadata collector for SwiftUI previews
+actor MockMetadataCollector {
+    private let deviceName: String
+    private let location: Location?
+
+    init(deviceName: String = "Preview Device", location: Location? = nil) {
+        self.deviceName = deviceName
+        self.location = location
+    }
+
+    func getCurrentDevice() -> String {
+        return deviceName
+    }
+
+    func generateTimestamp() -> Date {
+        return Date()
+    }
+
+    func getCurrentLocation() async -> Location? {
+        return location
+    }
+}
+#endif

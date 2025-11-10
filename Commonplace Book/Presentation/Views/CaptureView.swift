@@ -40,7 +40,7 @@ struct CaptureView: View {
 
                 // Content based on mode
                 ZStack {
-                    Color(.systemBackground)
+                    Color(nsColor: .windowBackgroundColor)
                         .ignoresSafeArea()
 
                     if captureMode == .speech {
@@ -51,7 +51,6 @@ struct CaptureView: View {
                 }
             }
             .navigationTitle("Capture")
-            .navigationBarTitleDisplayMode(.inline)
             .alert("Permission Required", isPresented: $showingPermissionAlert) {
                 Button("Settings", action: openSettings)
                 Button("Cancel", role: .cancel) {}
@@ -133,7 +132,7 @@ struct CaptureView: View {
                 TextEditor(text: $manualContent)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .scrollContentBackground(.hidden)
-                    .background(Color(.secondarySystemBackground))
+                    .background(Color.gray.opacity(0.1))
                     .cornerRadius(8)
                     .accessibilityIdentifier("contentEditor")
             }
@@ -178,7 +177,7 @@ struct CaptureView: View {
                     .font(.body)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding()
-                    .background(Color(.secondarySystemBackground))
+                    .background(Color.gray.opacity(0.1))
                     .cornerRadius(12)
             }
             .frame(maxHeight: 200)
@@ -202,7 +201,7 @@ struct CaptureView: View {
                 .foregroundColor(.red)
                 .frame(maxWidth: .infinity)
                 .padding()
-                .background(Color(.systemGray5))
+                .background(Color.gray.opacity(0.2))
                 .cornerRadius(12)
             }
             .accessibilityIdentifier("cancelButton")
@@ -238,7 +237,7 @@ struct CaptureView: View {
                 .foregroundColor(.red)
                 .frame(maxWidth: .infinity)
                 .padding()
-                .background(Color(.systemGray5))
+                .background(Color.gray.opacity(0.2))
                 .cornerRadius(12)
             }
             .accessibilityIdentifier("cancelButton")
@@ -350,9 +349,14 @@ struct CaptureView: View {
     }
 
     private func openSettings() {
+        #if os(iOS)
         if let settingsURL = URL(string: UIApplication.openSettingsURLString) {
             UIApplication.shared.open(settingsURL)
         }
+        #else
+        // On macOS, direct to System Preferences is not available
+        // Users can manually grant permissions in System Preferences > Privacy & Security
+        #endif
     }
 }
 

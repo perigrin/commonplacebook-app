@@ -61,37 +61,3 @@ protocol CoreDataRepository<Entity>: Repository where Entity: NSManagedObject {
     /// - Returns: A publisher that emits the number of deleted entities or an error
     func batchDelete(predicate: NSPredicate) -> AnyPublisher<Int, Error>
 }
-
-/// Repository error types
-enum RepositoryError: Error, LocalizedError {
-    /// Entity not found
-    case entityNotFound
-    /// Failed to save
-    case saveFailed(Error)
-    /// Failed to update
-    case updateFailed(Error)
-    /// Failed to delete
-    case deleteFailed(Error)
-    /// Failed to fetch
-    case fetchFailed(Error)
-    /// Invalid entity
-    case invalidEntity
-    
-    /// Descriptive error message
-    var errorDescription: String? {
-        switch self {
-        case .entityNotFound:
-            return "The requested entity was not found."
-        case .saveFailed(let error):
-            return "Failed to save entity: \(error.localizedDescription)"
-        case .updateFailed(let error):
-            return "Failed to update entity: \(error.localizedDescription)"
-        case .deleteFailed(let error):
-            return "Failed to delete entity: \(error.localizedDescription)"
-        case .fetchFailed(let error):
-            return "Failed to fetch entities: \(error.localizedDescription)"
-        case .invalidEntity:
-            return "The entity is invalid or has missing required properties."
-        }
-    }
-}

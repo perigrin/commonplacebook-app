@@ -29,7 +29,6 @@ struct NoteDetailView: View {
             .padding()
         }
         .navigationTitle("Note")
-        .navigationBarTitleDisplayMode(.inline)
     }
 
     private var metadataSection: some View {

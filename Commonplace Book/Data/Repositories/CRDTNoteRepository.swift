@@ -77,7 +77,7 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
 
     // MARK: - Database Setup
 
-    private func createTableIfNeeded() throws {
+    private nonisolated func createTableIfNeeded() throws {
         try db.run(notesTable.create(ifNotExists: true) { table in
             table.column(idColumn, primaryKey: true)
             table.column(crdtDataColumn)
@@ -149,7 +149,7 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
         }
     }
 
-    private func ensureDirectoryExists() throws {
+    private nonisolated func ensureDirectoryExists() throws {
         if !fileManager.fileExists(atPath: notesDirectory.path) {
             try fileManager.createDirectory(
                 at: notesDirectory,
@@ -160,7 +160,7 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
 
     // MARK: - File System Watcher
 
-    private func startFileSystemWatcher() {
+    private nonisolated func startFileSystemWatcher() {
         let descriptor = open(notesDirectory.path, O_EVTONLY)
         guard descriptor != -1 else {
             print("Failed to open file descriptor for watching")
@@ -185,7 +185,7 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
 
         source.setEventHandler { [weak self] in
             Task {
-                await self?.importExternalChanges()
+                try? await self?.importExternalChanges()
             }
         }
 
@@ -916,7 +916,7 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
     }
 
     /// Clean up old tombstones to prevent unbounded growth
-    func cleanupOldTombstones(olderThan days: Int = 30) throws {
+    nonisolated func cleanupOldTombstones(olderThan days: Int = 30) throws {
         let cutoff = Date().addingTimeInterval(-Double(days * 24 * 60 * 60))
         let cutoffTimestamp = Int64(cutoff.timeIntervalSince1970)
         try db.run(tombstonesTable.filter(tombstoneDeletedAtColumn < cutoffTimestamp).delete())

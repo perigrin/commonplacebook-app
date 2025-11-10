@@ -423,14 +423,19 @@ class MockAudioEngine: AudioEngineProtocol {
 }
 
 class MockAudioSession: AudioSessionProtocol {
-    var setCategoryCalled = false
-    var setActiveCalled = false
+    var configureCalled = false
+    var activateCalled = false
+    var deactivateCalled = false
 
-    func setCategory(_ category: AVAudioSession.Category, mode: AVAudioSession.Mode, options: AVAudioSession.CategoryOptions) throws {
-        setCategoryCalled = true
+    func configure() throws {
+        configureCalled = true
     }
 
-    func setActive(_ active: Bool, options: AVAudioSession.SetActiveOptions) throws {
-        setActiveCalled = true
+    func activate() throws {
+        activateCalled = true
+    }
+
+    func deactivate() throws {
+        deactivateCalled = true
     }
 }

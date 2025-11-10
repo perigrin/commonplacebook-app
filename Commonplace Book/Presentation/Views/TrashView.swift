@@ -67,7 +67,6 @@ struct TrashView: View {
             }
         }
         .navigationTitle("Trash")
-        .navigationBarTitleDisplayMode(.inline)
         .task {
             await loadTrashedNotes()
         }
