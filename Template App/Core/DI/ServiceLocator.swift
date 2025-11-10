@@ -103,7 +103,10 @@ struct Inject<T> {
     /// - Parameter type: The type to inject
     init(_ type: T.Type) {
         guard let service = ServiceLocator.shared.resolve(type) else {
-            fatalError("No service of type \(type) registered with the ServiceLocator")
+            let typeName = String(describing: type)
+            let registered = ServiceLocator.shared.listRegisteredServices().joined(separator: ", ")
+            Logger.error("DI Error: No service of type '\(typeName)' registered. Registered services: [\(registered)]", category: .general)
+            fatalError("No service of type \(type) registered with the ServiceLocator. Check logs for registered services.")
         }
         self.wrappedValue = service
     }
@@ -121,7 +124,10 @@ final class InjectedService<T> {
     var value: T {
         if _value == nil {
             guard let service = ServiceLocator.shared.resolve(type) else {
-                fatalError("No service of type \(type) registered with the ServiceLocator")
+                let typeName = String(describing: type)
+                let registered = ServiceLocator.shared.listRegisteredServices().joined(separator: ", ")
+                Logger.error("DI Error: No service of type '\(typeName)' registered. Registered services: [\(registered)]", category: .general)
+                fatalError("No service of type \(type) registered with the ServiceLocator. Check logs for registered services.")
             }
             _value = service
         }
