@@ -159,10 +159,14 @@ class TrashService: ObservableObject {
     }
 
     /// Stop automatic purge timer
-    func stopAutoPurge() {
+    /// Note: nonisolated to allow calling from deinit
+    nonisolated func stopAutoPurge() {
+        // Timer.invalidate() is thread-safe and can be called from any context
         autoPurgeTimer?.invalidate()
-        autoPurgeTimer = nil
-        Logger.info("Auto-purge timer stopped", category: .general)
+        Task { @MainActor in
+            autoPurgeTimer = nil
+            Logger.info("Auto-purge timer stopped", category: .general)
+        }
     }
 
     deinit {

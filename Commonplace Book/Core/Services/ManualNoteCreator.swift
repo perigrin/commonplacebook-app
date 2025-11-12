@@ -49,8 +49,8 @@ class ManualNoteCreator {
         let finalTitle = generateTitle(from: title, content: trimmedContent)
 
         // Collect metadata
-        let device = metadataCollector.getCurrentDevice()
-        let timestamp = metadataCollector.generateTimestamp()
+        let device = await metadataCollector.getCurrentDevice()
+        let timestamp = await metadataCollector.generateTimestamp()
         let location = await metadataCollector.getCurrentLocation()
 
         // Create note

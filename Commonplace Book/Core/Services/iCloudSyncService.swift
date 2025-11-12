@@ -21,7 +21,7 @@ actor iCloudSyncService {
     // State machine for sync coordination (replaces NSLock)
     private enum SyncState {
         case idle
-        case syncing(task: Task<Void, Never>)
+        case syncing(task: Task<Void, Never>, id: UUID)
     }
     private var syncState = SyncState.idle
 
@@ -82,7 +82,8 @@ actor iCloudSyncService {
     private let maxRetries = 5
 
     // Status publishing (actor-safe)
-    private let statusSubject = CurrentValueSubject<SyncStatus, Never>(.idle)
+    // nonisolated(unsafe) is safe because CurrentValueSubject is thread-safe
+    nonisolated(unsafe) private let statusSubject = CurrentValueSubject<SyncStatus, Never>(.idle)
     private var _isSyncing = false
 
     // Configuration
@@ -129,6 +130,8 @@ actor iCloudSyncService {
             guard accountStatus == .available else {
                 let message: String
                 switch accountStatus {
+                case .available:
+                    message = "iCloud is available." // Should not reach here due to guard
                 case .noAccount:
                     message = "No iCloud account configured. Please sign in to iCloud in Settings."
                 case .restricted:
@@ -188,7 +191,7 @@ actor iCloudSyncService {
         statusSubject.send(.idle)
 
         // Wait for active sync using state machine
-        if case .syncing(let task) = syncState {
+        if case .syncing(let task, _) = syncState {
             await task.value
         }
         syncState = .idle
@@ -215,7 +218,7 @@ actor iCloudSyncService {
         print("iCloud account changed - re-verifying authentication")
 
         // Wait for active sync using state machine
-        if case .syncing(let task) = syncState {
+        if case .syncing(let task, _) = syncState {
             print("Waiting for active sync to complete before handling account change")
             await task.value
         }
@@ -226,7 +229,7 @@ actor iCloudSyncService {
 
             if accountStatus == .available {
                 // Re-setup sync
-                await startBackgroundSync()
+                startBackgroundSync()
             } else {
                 await stop()
                 statusSubject.send(.error("iCloud account changed. Please restart sync."))
@@ -241,16 +244,18 @@ actor iCloudSyncService {
     func syncNow() async {
         // Check current state and create task atomically
         let task: Task<Void, Never>
+        let taskID: UUID
 
         switch syncState {
         case .idle:
             // Only create task if idle
+            taskID = UUID()
             task = Task {
                 await performSyncWithRetry()
             }
-            syncState = .syncing(task: task)
+            syncState = .syncing(task: task, id: taskID)
 
-        case .syncing(let existingTask):
+        case .syncing(let existingTask, _):
             // Already syncing, just wait
             await existingTask.value
             return
@@ -260,7 +265,7 @@ actor iCloudSyncService {
         await task.value
 
         // Reset to idle (only if we're still the active task)
-        if case .syncing(let activeTask) = syncState, activeTask === task {
+        if case .syncing(_, let activeTaskID) = syncState, activeTaskID == taskID {
             syncState = .idle
         }
     }
@@ -501,7 +506,7 @@ actor iCloudSyncService {
         // Load deleted IDs once per sync
         if cachedDeletedIDs == nil {
             let lastWeek = Date().addingTimeInterval(-7 * 24 * 60 * 60)
-            cachedDeletedIDs = Set(try repository.getDeletedSince(lastWeek))
+            cachedDeletedIDs = Set(try await repository.getDeletedSince(lastWeek))
             print("Cached \(cachedDeletedIDs!.count) recently deleted note IDs")
         }
 
