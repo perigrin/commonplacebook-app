@@ -57,10 +57,10 @@ actor PersistenceController {
     }()
 
     /// The Core Data persistent container
-    let container: NSPersistentContainer
-    
+    nonisolated(unsafe) let container: NSPersistentContainer
+
     /// Background context for background operations
-    private lazy var backgroundContext: NSManagedObjectContext = {
+    private nonisolated(unsafe) lazy var backgroundContext: NSManagedObjectContext = {
         let context = container.newBackgroundContext()
         context.mergePolicy = NSMergePolicy.mergeByPropertyObjectTrump
         return context
