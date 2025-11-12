@@ -125,7 +125,8 @@ class TrashService: ObservableObject {
     // MARK: - Scheduled Purge
 
     /// Timer for periodic auto-purge (24 hour interval)
-    private var autoPurgeTimer: Timer?
+    /// Marked nonisolated(unsafe) because Timer is thread-safe
+    private nonisolated(unsafe) var autoPurgeTimer: Timer?
 
     /// Schedule automatic purge to run periodically
     /// Uses Timer for reliable, cancellable periodic execution

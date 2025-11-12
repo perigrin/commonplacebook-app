@@ -96,7 +96,11 @@ class EmbeddingBackgroundService {
 
     /// Process queued notes in batches
     private func processQueue() async {
-        while !Task.isCancelled && await MainActor.run { isProcessing } {
+        while !Task.isCancelled {
+            // Check if still processing
+            let shouldContinue = await MainActor.run { isProcessing }
+            guard shouldContinue else { break }
+
             // Get next batch atomically
             let batch = await MainActor.run { () -> [UUID] in
                 guard !processingQueue.isEmpty else { return [] }
@@ -139,7 +143,8 @@ class EmbeddingBackgroundService {
 
         for noteId in batch {
             // Skip if already processed successfully
-            if await MainActor.run { processedNotes.contains(noteId) } {
+            let alreadyProcessed = await MainActor.run { processedNotes.contains(noteId) }
+            if alreadyProcessed {
                 continue
             }
 
