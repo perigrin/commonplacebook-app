@@ -3,6 +3,11 @@
 
 import Foundation
 import SwiftUI
+#if os(iOS)
+import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
 
 /// Service for presenting errors to users in a friendly way
 @MainActor
@@ -225,9 +230,15 @@ extension View {
             // Caller should implement retry logic
             break
         case .openSettings:
+            #if os(iOS)
             if let url = URL(string: UIApplication.openSettingsURLString) {
                 UIApplication.shared.open(url)
             }
+            #elseif os(macOS)
+            if let url = URL(string: "x-apple.systempreferences:") {
+                NSWorkspace.shared.open(url)
+            }
+            #endif
         case .contact:
             // Open mail or support URL
             break
