@@ -64,7 +64,7 @@ actor PersistenceController {
     private nonisolated(unsafe) var _backgroundContext: NSManagedObjectContext?
 
     /// Get or create the background context
-    private nonisolated(unsafe) var backgroundContext: NSManagedObjectContext {
+    private nonisolated var backgroundContext: NSManagedObjectContext {
         if let context = _backgroundContext {
             return context
         }

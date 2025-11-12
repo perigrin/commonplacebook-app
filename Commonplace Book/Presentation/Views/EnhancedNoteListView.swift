@@ -378,8 +378,7 @@ struct EnhancedNoteListView_Previews: PreviewProvider {
     @MainActor
     static func makeListViewModelWithNotes() -> NoteListViewModel {
         let repository = InMemoryNoteRepository()
-        let metadataCollector = MockMetadataCollector()
-        let viewModel = NoteListViewModel(repository: repository, metadataCollector: metadataCollector)
+        let viewModel = NoteListViewModel(repository: repository, metadataCollector: nil)
 
         // Add notes synchronously for preview
         let note1 = Note(

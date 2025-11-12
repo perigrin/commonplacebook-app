@@ -148,7 +148,11 @@ struct WaveformView_Previews: PreviewProvider {
                 }
             }
             .padding()
+            #if os(macOS)
             .background(Color(nsColor: .windowBackgroundColor))
+            #else
+            .background(Color(uiColor: .systemBackground))
+            #endif
             .cornerRadius(12)
         }
     }

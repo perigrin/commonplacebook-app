@@ -40,8 +40,13 @@ struct CaptureView: View {
 
                 // Content based on mode
                 ZStack {
+                    #if os(macOS)
                     Color(nsColor: .windowBackgroundColor)
                         .ignoresSafeArea()
+                    #else
+                    Color(uiColor: .systemBackground)
+                        .ignoresSafeArea()
+                    #endif
 
                     if captureMode == .speech {
                         speechCaptureView
