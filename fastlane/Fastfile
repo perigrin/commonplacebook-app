@@ -20,7 +20,7 @@ platform :ios do
   desc "Run all tests"
   lane :tests do
     run_tests(
-      workspace: "Commonplace Book.xcworkspace",
+      project: "Commonplace Book.xcodeproj",
       scheme: "Commonplace Book",
       devices: ["iPhone 14"],
       code_coverage: true
@@ -41,7 +41,7 @@ platform :ios do
   desc "Build app for testing"
   lane :build do
     build_app(
-      workspace: "Commonplace Book.xcworkspace",
+      project: "Commonplace Book.xcodeproj",
       scheme: "Commonplace Book",
       skip_archive: true,
       skip_codesigning: true
@@ -68,13 +68,13 @@ platform :ios do
     # Match for code signing
     sync_code_signing(
       type: "appstore",
-      app_identifier: "com.tamarou.commonplacebook",
+      app_identifier: "com.tamarou.commonplacebook-app",
       readonly: true
     )
     
     # Build the app
     build_app(
-      workspace: "Commonplace Book.xcworkspace",
+      project: "Commonplace Book.xcodeproj",
       scheme: "Commonplace Book",
       include_bitcode: true,
       include_symbols: true,
@@ -114,13 +114,13 @@ platform :ios do
     # Match for code signing
     sync_code_signing(
       type: "appstore",
-      app_identifier: "com.tamarou.commonplacebook",
+      app_identifier: "com.tamarou.commonplacebook-app",
       readonly: true
     )
     
     # Build the app
     build_app(
-      workspace: "Commonplace Book.xcworkspace",
+      project: "Commonplace Book.xcodeproj",
       scheme: "Commonplace Book",
       include_bitcode: true,
       include_symbols: true,
