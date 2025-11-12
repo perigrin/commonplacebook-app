@@ -349,6 +349,9 @@ private class MockSecurityManagerForPreview: SecurityManaging {
     func authenticateWithBiometrics(reason: String, completion: @escaping (Bool, Error?) -> Void) {
         completion(true, nil)
     }
+    func authenticateWithDevicePasscode(reason: String, completion: @escaping (Bool, Error?) -> Void) {
+        completion(true, nil)
+    }
     func storeInKeychain(_ data: Data, forKey key: String) -> Bool { true }
     func getFromKeychain(forKey key: String) -> Data? { nil }
     func deleteFromKeychain(forKey key: String) -> Bool { true }

@@ -198,9 +198,13 @@ private class MockSecurityManagerForPreview: SecurityManaging {
         completion(true, nil)
     }
 
+    func authenticateWithDevicePasscode(reason: String, completion: @escaping (Bool, Error?) -> Void) {
+        completion(true, nil)
+    }
+
     func storeInKeychain(_ data: Data, forKey key: String) -> Bool { true }
     func getFromKeychain(forKey key: String) -> Data? { nil }
-    func deleteFromKeychain(forKey key: String) { }
+    func deleteFromKeychain(forKey key: String) -> Bool { true }
     func encrypt(data: Data, with key: SymmetricKey) throws -> Data { data }
     func decrypt(data: Data, with key: SymmetricKey) throws -> Data { data }
 }
