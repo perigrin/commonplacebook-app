@@ -47,8 +47,6 @@ jobs:
       - name: Install dependencies
         run: |
           gem install fastlane
-          gem install cocoapods
-          pod install --repo-update
       
       - name: Set up App Store Connect API key
         env:
