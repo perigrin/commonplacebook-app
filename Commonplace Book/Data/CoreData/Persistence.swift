@@ -274,7 +274,7 @@ extension NSManagedObjectContext {
     
     /// Performs a function on the context's queue
     /// - Parameter block: The block to execute
-    func performAndWaitSafely<T>(_ block: () throws -> T) rethrows -> T {
+    func performAndWaitSafely<T>(_ block: @Sendable () throws -> T) rethrows -> T {
         return try self.performAndWait(block)
     }
 }
