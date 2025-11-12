@@ -121,8 +121,8 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
         // Add timeout for validation to prevent blocking
         do {
             try await withTimeout(seconds: 5) {
-                let doc = try await crdtService.load(data: data)
-                _ = try await crdtService.readNote(docHandle: doc)
+                let doc = try await self.crdtService.load(data: data)
+                _ = try await self.crdtService.readNote(docHandle: doc)
             }
             return true
         } catch {
