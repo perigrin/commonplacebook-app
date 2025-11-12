@@ -8,26 +8,26 @@ import Automerge
 /// CRDT-backed repository with SQLite persistence and file system synchronization
 actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
 
-    private let db: Connection
+    private nonisolated(unsafe) let db: Connection
     private let notesDirectory: URL
     private let crdtService: CRDTService
-    private let formatter: NoteFileFormatter
-    private let fileManager: FileManager
+    private nonisolated(unsafe) let formatter: NoteFileFormatter
+    private nonisolated(unsafe) let fileManager: FileManager
 
     // SQLite table definition
-    private let notesTable = Table("notes")
-    private let idColumn = Expression<String>("id")
-    private let crdtDataColumn = Expression<Data>("crdt_data")
-    private let filePathColumn = Expression<String>("file_path")
-    private let lastModifiedColumn = Expression<Int64>("last_modified")
+    private nonisolated(unsafe) let notesTable = Table("notes")
+    private nonisolated(unsafe) let idColumn = Expression<String>("id")
+    private nonisolated(unsafe) let crdtDataColumn = Expression<Data>("crdt_data")
+    private nonisolated(unsafe) let filePathColumn = Expression<String>("file_path")
+    private nonisolated(unsafe) let lastModifiedColumn = Expression<Int64>("last_modified")
     // Columns for efficient searching without loading CRDTs
-    private let titleColumn = Expression<String>("title")
-    private let contentColumn = Expression<String>("content")
+    private nonisolated(unsafe) let titleColumn = Expression<String>("title")
+    private nonisolated(unsafe) let contentColumn = Expression<String>("content")
 
     // Tombstone table for delete tracking
-    private let tombstonesTable = Table("tombstones")
-    private let tombstoneIdColumn = Expression<String>("id")
-    private let tombstoneDeletedAtColumn = Expression<Int64>("deleted_at")
+    private nonisolated(unsafe) let tombstonesTable = Table("tombstones")
+    private nonisolated(unsafe) let tombstoneIdColumn = Expression<String>("id")
+    private nonisolated(unsafe) let tombstoneDeletedAtColumn = Expression<Int64>("deleted_at")
 
     // LRU cache for documents (bounded memory)
     private let maxCacheSize = 500  // Increased from 100
@@ -39,7 +39,7 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
     private var documentRefCounts: [UUID: Int] = [:]
 
     // File system watcher
-    private var fileWatcher: DispatchSourceFileSystemObject?
+    private nonisolated(unsafe) var fileWatcher: DispatchSourceFileSystemObject?
 
     /// Initialize CRDT repository
     /// - Parameters:
@@ -121,8 +121,8 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
         // Add timeout for validation to prevent blocking
         do {
             try await withTimeout(seconds: 5) {
-                let doc = try await crdtService.load(data: data)
-                _ = try await crdtService.readNote(docHandle: doc)
+                let doc = try await self.crdtService.load(data: data)
+                _ = try await self.crdtService.readNote(docHandle: doc)
             }
             return true
         } catch {
@@ -132,7 +132,7 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
     }
 
     // Helper function for timeout
-    private func withTimeout<T>(seconds: Double, operation: () async throws -> T) async throws -> T {
+    private func withTimeout<T>(seconds: Double, operation: @escaping () async throws -> T) async throws -> T {
         return try await withThrowingTaskGroup(of: T.self) { group in
             group.addTask {
                 try await operation()

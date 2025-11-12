@@ -137,7 +137,7 @@ class EmbeddingService: EmbeddingServiceProtocol {
             for i in 0..<embeddingDimension {
                 let position = (Int(wordHash) + i * 7) % embeddingDimension
                 let bit = (wordHash >> (i % 64)) & 1
-                let contribution = bit == 1 ? 1.0 : -1.0
+                let contribution: Float = bit == 1 ? 1.0 : -1.0
 
                 // Weight by word position (earlier words matter more)
                 let positionWeight = 1.0 / Float(wordIndex + 1)

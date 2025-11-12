@@ -130,8 +130,7 @@ struct NoteListView_Previews: PreviewProvider {
 
     static func makeViewModelWithNotes() -> NoteListViewModel {
         let repository = InMemoryNoteRepository()
-        let metadataCollector = MockMetadataCollector()
-        let viewModel = NoteListViewModel(repository: repository, metadataCollector: metadataCollector)
+        let viewModel = NoteListViewModel(repository: repository, metadataCollector: nil)
 
         // Add test notes synchronously for preview
         Task { @MainActor in
@@ -167,14 +166,12 @@ struct NoteListView_Previews: PreviewProvider {
 
     static func makeEmptyViewModel() -> NoteListViewModel {
         let repository = InMemoryNoteRepository()
-        let metadataCollector = MockMetadataCollector()
-        return NoteListViewModel(repository: repository, metadataCollector: metadataCollector)
+        return NoteListViewModel(repository: repository, metadataCollector: nil)
     }
 
     static func makeLoadingViewModel() -> NoteListViewModel {
         let repository = InMemoryNoteRepository()
-        let metadataCollector = MockMetadataCollector()
-        let viewModel = NoteListViewModel(repository: repository, metadataCollector: metadataCollector)
+        let viewModel = NoteListViewModel(repository: repository, metadataCollector: nil)
 
         Task { @MainActor in
             await viewModel.loadNotes()

@@ -3,6 +3,11 @@
 
 import Foundation
 import SwiftUI
+#if os(iOS)
+import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
 
 /// Service for presenting errors to users in a friendly way
 @MainActor
@@ -188,23 +193,23 @@ extension View {
     /// Present errors using an ErrorPresenter
     /// - Parameter presenter: The error presenter to use
     /// - Returns: A view with error presentation
-    func errorAlert(_ presenter: ErrorPresenter) -> some View {
+    func errorAlert(_ presenter: ObservedObject<ErrorPresenter>) -> some View {
         self.alert(
-            presenter.currentError?.title ?? "Error",
-            isPresented: $presenter.showError,
-            presenting: presenter.currentError
+            presenter.wrappedValue.currentError?.title ?? "Error",
+            isPresented: presenter.projectedValue.showError,
+            presenting: presenter.wrappedValue.currentError
         ) { error in
             // Primary action button
             if let action = error.recoveryAction {
                 Button(action.label) {
                     handleRecoveryAction(action)
-                    presenter.dismiss()
+                    presenter.wrappedValue.dismiss()
                 }
             }
 
             // Cancel button
             Button("Dismiss", role: .cancel) {
-                presenter.dismiss()
+                presenter.wrappedValue.dismiss()
             }
         } message: { error in
             VStack(alignment: .leading, spacing: 8) {
@@ -225,9 +230,15 @@ extension View {
             // Caller should implement retry logic
             break
         case .openSettings:
+            #if os(iOS)
             if let url = URL(string: UIApplication.openSettingsURLString) {
                 UIApplication.shared.open(url)
             }
+            #elseif os(macOS)
+            if let url = URL(string: "x-apple.systempreferences:") {
+                NSWorkspace.shared.open(url)
+            }
+            #endif
         case .contact:
             // Open mail or support URL
             break

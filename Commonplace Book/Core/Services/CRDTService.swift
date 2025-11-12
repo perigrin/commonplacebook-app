@@ -197,14 +197,14 @@ actor CRDTService {
         return Note(
             id: id,
             created: created,
-            modified: modified,
             device: device,
             location: location,
             content: content,
             title: title,
             backlinks: backlinks,
-            deletedAt: deletedAt,
-            unknownFrontmatterFields: [:]
+            unknownFrontmatterFields: [:],
+            modified: modified,
+            deletedAt: deletedAt
         )
     }
 

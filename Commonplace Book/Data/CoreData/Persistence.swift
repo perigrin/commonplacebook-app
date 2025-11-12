@@ -58,13 +58,21 @@ actor PersistenceController {
 
     /// The Core Data persistent container
     let container: NSPersistentContainer
-    
+
     /// Background context for background operations
-    private lazy var backgroundContext: NSManagedObjectContext = {
+    /// Marked nonisolated(unsafe) because NSManagedObjectContext handles its own thread-safety via perform methods
+    private nonisolated(unsafe) var _backgroundContext: NSManagedObjectContext?
+
+    /// Get or create the background context
+    private nonisolated var backgroundContext: NSManagedObjectContext {
+        if let context = _backgroundContext {
+            return context
+        }
         let context = container.newBackgroundContext()
         context.mergePolicy = NSMergePolicy.mergeByPropertyObjectTrump
+        _backgroundContext = context
         return context
-    }()
+    }
 
     /// Creates a new persistence controller
     /// - Parameter inMemory: Whether to use an in-memory store
@@ -266,7 +274,7 @@ extension NSManagedObjectContext {
     
     /// Performs a function on the context's queue
     /// - Parameter block: The block to execute
-    func performAndWaitSafely<T>(_ block: () throws -> T) rethrows -> T {
+    func performAndWaitSafely<T>(_ block: @Sendable () throws -> T) rethrows -> T {
         return try self.performAndWait(block)
     }
 }

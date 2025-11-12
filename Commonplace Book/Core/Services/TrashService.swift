@@ -125,7 +125,8 @@ class TrashService: ObservableObject {
     // MARK: - Scheduled Purge
 
     /// Timer for periodic auto-purge (24 hour interval)
-    private var autoPurgeTimer: Timer?
+    /// Marked nonisolated(unsafe) because Timer is thread-safe
+    private nonisolated(unsafe) var autoPurgeTimer: Timer?
 
     /// Schedule automatic purge to run periodically
     /// Uses Timer for reliable, cancellable periodic execution
@@ -159,10 +160,14 @@ class TrashService: ObservableObject {
     }
 
     /// Stop automatic purge timer
-    func stopAutoPurge() {
+    /// Note: nonisolated to allow calling from deinit
+    nonisolated func stopAutoPurge() {
+        // Timer.invalidate() is thread-safe and can be called from any context
         autoPurgeTimer?.invalidate()
-        autoPurgeTimer = nil
-        Logger.info("Auto-purge timer stopped", category: .general)
+        Task { @MainActor in
+            autoPurgeTimer = nil
+            Logger.info("Auto-purge timer stopped", category: .general)
+        }
     }
 
     deinit {

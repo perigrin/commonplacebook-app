@@ -29,6 +29,8 @@ enum Logger {
         case security
         /// Performance-related logs
         case performance
+        /// Embedding-related logs
+        case embedding
     }
     
     /// Log levels
