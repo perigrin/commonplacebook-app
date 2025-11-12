@@ -112,6 +112,9 @@
 			);
 			name = "Commonplace Book";
 			packageProductDependencies = (
+				E70A9F512DC46AAA002546E8 /* Yams */,
+				E70A9F542DC46AAB002546E8 /* Automerge */,
+				E70A9F572DC46AAC002546E8 /* SQLite */,
 			);
 			productName = "Commonplace Book";
 			productReference = E70A9F112DC468D4002546E8 /* Commonplace Book.app */;
@@ -195,6 +198,11 @@
 			);
 			mainGroup = E70A9F082DC468D4002546E8;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				E70A9F502DC46AAA002546E8 /* XCRemoteSwiftPackageReference "Yams" */,
+				E70A9F532DC46AAB002546E8 /* XCRemoteSwiftPackageReference "automerge-swift" */,
+				E70A9F562DC46AAC002546E8 /* XCRemoteSwiftPackageReference "SQLite.swift" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = E70A9F122DC468D4002546E8 /* Products */;
 			projectDirPath = "";
@@ -585,6 +593,51 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		E70A9F502DC46AAA002546E8 /* XCRemoteSwiftPackageReference "Yams" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/jpsim/Yams.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 5.0.6;
+			};
+		};
+		E70A9F532DC46AAB002546E8 /* XCRemoteSwiftPackageReference "automerge-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/automerge/automerge-swift.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.6.1;
+			};
+		};
+		E70A9F562DC46AAC002546E8 /* XCRemoteSwiftPackageReference "SQLite.swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/stephencelis/SQLite.swift.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.15.3;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		E70A9F512DC46AAA002546E8 /* Yams */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E70A9F502DC46AAA002546E8 /* XCRemoteSwiftPackageReference "Yams" */;
+			productName = Yams;
+		};
+		E70A9F542DC46AAB002546E8 /* Automerge */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E70A9F532DC46AAB002546E8 /* XCRemoteSwiftPackageReference "automerge-swift" */;
+			productName = Automerge;
+		};
+		E70A9F572DC46AAC002546E8 /* SQLite */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E70A9F562DC46AAC002546E8 /* XCRemoteSwiftPackageReference "SQLite.swift" */;
+			productName = SQLite;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = E70A9F092DC468D4002546E8 /* Project object */;
 }
