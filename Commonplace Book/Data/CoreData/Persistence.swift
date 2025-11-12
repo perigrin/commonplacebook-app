@@ -60,7 +60,8 @@ actor PersistenceController {
     let container: NSPersistentContainer
 
     /// Background context for background operations
-    private lazy var backgroundContext: NSManagedObjectContext = {
+    /// Marked nonisolated(unsafe) because NSManagedObjectContext handles its own thread-safety via perform methods
+    private nonisolated(unsafe) lazy var backgroundContext: NSManagedObjectContext = {
         let context = container.newBackgroundContext()
         context.mergePolicy = NSMergePolicy.mergeByPropertyObjectTrump
         return context
