@@ -9,8 +9,8 @@ import Automerge
 actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
 
     private nonisolated(unsafe) let db: Connection
-    private nonisolated(unsafe) let notesDirectory: URL
-    private nonisolated(unsafe) let crdtService: CRDTService
+    private let notesDirectory: URL
+    private let crdtService: CRDTService
     private nonisolated(unsafe) let formatter: NoteFileFormatter
     private nonisolated(unsafe) let fileManager: FileManager
 
