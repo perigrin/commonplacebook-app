@@ -20,6 +20,7 @@ class AppCoordinator: ObservableObject {
 
     private let noteRepository: NoteRepository
     private let searchEngine: VectorSearchEngineProtocol
+    private let embeddingService: EmbeddingServiceProtocol
     private let listViewModel: NoteListViewModel
     private let searchViewModel: SearchViewModel
 
@@ -27,7 +28,8 @@ class AppCoordinator: ObservableObject {
     var rootView: some View {
         EnhancedNoteListView(
             listViewModel: listViewModel,
-            searchViewModel: searchViewModel
+            searchViewModel: searchViewModel,
+            appCoordinator: self
         )
     }
 
@@ -35,12 +37,13 @@ class AppCoordinator: ObservableObject {
 
     @MainActor
     init() {
-        // Initialize note repository (using InMemoryRepository for MVP)
-        // TODO: Replace with FileSystemNoteRepository or CRDTNoteRepository for production
-        self.noteRepository = InMemoryNoteRepository()
+        // Initialize note repository with persistent file system storage
+        let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let notesDirectory = documentsDirectory.appendingPathComponent("Notes")
+        self.noteRepository = FileSystemNoteRepository(directory: notesDirectory)
 
         // Initialize embedding service for vector search
-        let embeddingService = EmbeddingService()
+        self.embeddingService = EmbeddingService()
 
         // Initialize vector search engine
         self.searchEngine = VectorSearchEngine(embeddingService: embeddingService)
@@ -51,6 +54,11 @@ class AppCoordinator: ObservableObject {
 
         setupDependencies()
         configureAppearance()
+
+        // Load and index existing notes
+        Task {
+            await indexExistingNotes()
+        }
     }
 
     // MARK: - Setup Methods
@@ -69,20 +77,68 @@ class AppCoordinator: ObservableObject {
         #endif
     }
     
+    // MARK: - Search Indexing
+
+    /// Index a single note in the vector search engine
+    /// - Parameter noteId: UUID of the note to index
+    func indexNote(id noteId: UUID) async {
+        do {
+            // Read note from repository
+            guard let note = try await noteRepository.read(id: noteId) else {
+                Logger.warning("Note \(noteId) not found for indexing", category: .database)
+                return
+            }
+
+            // Generate embedding for note content
+            let embedding = try await embeddingService.generateEmbedding(for: note.content)
+
+            // Index in search engine
+            try await searchEngine.indexNote(id: note.id, embedding: embedding)
+
+            Logger.info("Indexed note \(noteId)", category: .database)
+        } catch {
+            Logger.error("Failed to index note \(noteId): \(error.localizedDescription)", category: .database)
+        }
+    }
+
+    /// Index all existing notes in the vector search engine
+    private func indexExistingNotes() async {
+        do {
+            let notes = try await noteRepository.list()
+            Logger.info("Indexing \(notes.count) existing notes", category: .database)
+
+            for note in notes {
+                do {
+                    // Generate embedding for note content
+                    let embedding = try await embeddingService.generateEmbedding(for: note.content)
+
+                    // Index in search engine
+                    try await searchEngine.indexNote(id: note.id, embedding: embedding)
+                } catch {
+                    Logger.error("Failed to index note \(note.id): \(error.localizedDescription)", category: .database)
+                }
+            }
+
+            Logger.info("Finished indexing notes", category: .database)
+        } catch {
+            Logger.error("Failed to load notes for indexing: \(error.localizedDescription)", category: .database)
+        }
+    }
+
     // MARK: - Navigation Methods
-    
+
     /// Handles deep links
     func handleDeepLink(_ url: URL) {
         // Add deep link handling logic here
         Logger.info("Deep link received: \(url.absoluteString)", category: .ui)
     }
-    
+
     /// Handles universal links
     func handleUniversalLink(_ userActivity: NSUserActivity) {
         // Add universal link handling logic here
         Logger.info("Universal link received: \(userActivity.activityType)", category: .ui)
     }
-    
+
     /// Handles push notifications
     func handlePushNotification(_ userInfo: [AnyHashable: Any]) {
         // Add push notification handling logic here

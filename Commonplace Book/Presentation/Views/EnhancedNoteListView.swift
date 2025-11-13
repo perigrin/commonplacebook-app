@@ -6,6 +6,7 @@ import SwiftUI
 struct EnhancedNoteListView: View {
     @ObservedObject var listViewModel: NoteListViewModel
     @ObservedObject var searchViewModel: SearchViewModel
+    @ObservedObject var appCoordinator: AppCoordinator
     @State private var selectedNote: Note?
     @State private var detailState: DetailPaneState = .empty
 
@@ -39,20 +40,12 @@ struct EnhancedNoteListView: View {
 
     var body: some View {
         NavigationSplitView {
-            // Sidebar: Note list
-            VStack(spacing: 0) {
-                // Search bar at top
-                SearchBar(query: $searchViewModel.query)
-                    .padding(.top, 8)
-                    .padding(.bottom, 4)
-
-                // Content area
-                ZStack {
-                    if isSearchMode {
-                        searchModeContent
-                    } else {
-                        defaultModeContent
-                    }
+            // Sidebar: Note list with search at bottom
+            ZStack {
+                if isSearchMode {
+                    searchModeContent
+                } else {
+                    defaultModeContent
                 }
             }
             .navigationTitle("Notes")
@@ -62,6 +55,17 @@ struct EnhancedNoteListView: View {
                         Label("New Note", systemImage: "plus")
                     }
                 }
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                // Search bar fixed at bottom
+                SearchBar(query: $searchViewModel.query)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 8)
+                    #if os(iOS)
+                    .background(Color(uiColor: .systemBackground))
+                    #elseif os(macOS)
+                    .background(Color(nsColor: .windowBackgroundColor))
+                    #endif
             }
             .task {
                 await listViewModel.loadNotes()
@@ -165,6 +169,9 @@ struct EnhancedNoteListView: View {
     private func noteEditPane(viewModel: NoteViewModel, isNew: Bool) -> some View {
         NoteEditView(viewModel: viewModel, onSave: {
             Task {
+                // Index the note in the search engine
+                await appCoordinator.indexNote(id: viewModel.id)
+
                 await listViewModel.loadNotes()
                 // Return to viewing the saved note
                 if let savedNote = try? await listViewModel.repository.read(id: viewModel.id) {
@@ -549,24 +556,32 @@ struct EnhancedNoteListView_Previews: PreviewProvider {
             // Default mode with notes
             EnhancedNoteListView(
                 listViewModel: makeListViewModelWithNotes(),
-                searchViewModel: makeSearchViewModel()
+                searchViewModel: makeSearchViewModel(),
+                appCoordinator: makeAppCoordinator()
             )
             .previewDisplayName("Default Mode")
 
             // Search mode with results
             EnhancedNoteListView(
                 listViewModel: makeListViewModelWithNotes(),
-                searchViewModel: makeSearchViewModelWithResults()
+                searchViewModel: makeSearchViewModelWithResults(),
+                appCoordinator: makeAppCoordinator()
             )
             .previewDisplayName("Search Mode")
 
             // Empty search results
             EnhancedNoteListView(
                 listViewModel: makeListViewModelWithNotes(),
-                searchViewModel: makeSearchViewModelEmpty()
+                searchViewModel: makeSearchViewModelEmpty(),
+                appCoordinator: makeAppCoordinator()
             )
             .previewDisplayName("No Results")
         }
+    }
+
+    @MainActor
+    static func makeAppCoordinator() -> AppCoordinator {
+        return AppCoordinator()
     }
 
     @MainActor
