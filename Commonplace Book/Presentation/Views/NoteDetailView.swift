@@ -5,6 +5,9 @@ import SwiftUI
 
 struct NoteDetailView: View {
     let note: Note
+    var repository: NoteRepository?
+    @State private var showingEdit = false
+    @State private var editViewModel: NoteViewModel?
 
     var body: some View {
         ScrollView {
@@ -29,6 +32,41 @@ struct NoteDetailView: View {
             .padding()
         }
         .navigationTitle("Note")
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button("Edit") {
+                    openEditView()
+                }
+            }
+        }
+        .sheet(isPresented: $showingEdit) {
+            if let viewModel = editViewModel {
+                NavigationStack {
+                    NoteEditView(viewModel: viewModel)
+                }
+            }
+        }
+    }
+
+    private func openEditView() {
+        // Use provided repository or fallback to in-memory for preview
+        let repo = repository ?? InMemoryNoteRepository()
+
+        Task {
+            // If using fallback repository, load the note into it
+            if repository == nil {
+                _ = try? await repo.create(note: note)
+            }
+
+            // Create view model
+            let viewModel = NoteViewModel(repository: repo, noteId: note.id)
+            await viewModel.load()
+
+            await MainActor.run {
+                editViewModel = viewModel
+                showingEdit = true
+            }
+        }
     }
 
     private var metadataSection: some View {

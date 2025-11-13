@@ -6,6 +6,8 @@ import SwiftUI
 struct EnhancedNoteListView: View {
     @ObservedObject var listViewModel: NoteListViewModel
     @ObservedObject var searchViewModel: SearchViewModel
+    @State private var showingCreateNote = false
+    @State private var createNoteViewModel: NoteViewModel?
 
     /// Determines current display mode
     private var isSearchMode: Bool {
@@ -31,11 +33,57 @@ struct EnhancedNoteListView: View {
             }
             .navigationTitle("Notes")
             .navigationDestination(for: Note.self) { note in
-                NoteDetailView(note: note)
+                NoteDetailView(note: note, repository: listViewModel.repository)
+            }
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button(action: createNewNote) {
+                        Label("New Note", systemImage: "plus")
+                    }
+                }
+            }
+            .sheet(isPresented: $showingCreateNote) {
+                if let viewModel = createNoteViewModel {
+                    NavigationStack {
+                        NoteEditView(viewModel: viewModel, onSave: {
+                            Task {
+                                await listViewModel.loadNotes()
+                            }
+                        })
+                    }
+                }
             }
             .task {
                 await listViewModel.loadNotes()
             }
+        }
+    }
+
+    private func createNewNote() {
+        Task { @MainActor in
+            // Create new note ID
+            let newNoteId = UUID()
+
+            // Create view model for new note
+            let viewModel = NoteViewModel(repository: listViewModel.repository, noteId: newNoteId)
+
+            // Collect initial metadata
+            let metadataCollector = MetadataCollector()
+            let device = await metadataCollector.getCurrentDevice()
+            let location = await metadataCollector.getCurrentLocation()
+            let timestamp = await metadataCollector.generateTimestamp()
+
+            // Set initial values
+            viewModel.updateTitle("")
+            viewModel.updateContent("")
+            Task { @MainActor in
+                viewModel.device = device
+                viewModel.location = location
+                viewModel.created = timestamp
+            }
+
+            createNoteViewModel = viewModel
+            showingCreateNote = true
         }
     }
 

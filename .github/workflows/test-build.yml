@@ -1,16 +1,6 @@
 name: Test Build
 
 on:
-  push:
-    branches:
-      - '**'  # Run on all branches
-    paths:
-      - 'Commonplace Book/**'
-      - 'Commonplace BookTests/**'
-      - 'Commonplace BookUITests/**'
-      - '*.xcodeproj/**'
-      - '.github/workflows/**'
-      - 'Package.swift'
   pull_request:
     paths:
       - 'Commonplace Book/**'
