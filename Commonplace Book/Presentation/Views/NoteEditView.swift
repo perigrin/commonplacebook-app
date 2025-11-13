@@ -8,10 +8,12 @@ struct NoteEditView: View {
     @Environment(\.dismiss) private var dismiss
 
     let onSave: (() -> Void)?
+    let onCancel: (() -> Void)?
 
-    init(viewModel: NoteViewModel, onSave: (() -> Void)? = nil) {
+    init(viewModel: NoteViewModel, onSave: (() -> Void)? = nil, onCancel: (() -> Void)? = nil) {
         self.viewModel = viewModel
         self.onSave = onSave
+        self.onCancel = onCancel
     }
 
     var body: some View {
@@ -35,6 +37,7 @@ struct NoteEditView: View {
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("Cancel") {
+                    onCancel?()
                     dismiss()
                 }
             }
