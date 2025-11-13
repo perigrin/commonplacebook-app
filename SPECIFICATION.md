@@ -164,7 +164,7 @@ Note content in extended markdown with footnote support[^1].
 **iPad & Mac**:
 - Side-by-side layout: note list | note editor
 - Larger screen real estate utilization
-- Mac via iOS compatibility mode (not native)
+- Native macOS support (AppKit-based, not Catalyst)
 
 #### 8. First-Time Experience
 

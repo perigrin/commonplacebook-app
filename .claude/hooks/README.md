@@ -2,81 +2,94 @@
 
 This directory contains hooks that run automatically during Claude Code sessions.
 
-## Session Start Hook
+## Why No Session Start Hook?
 
-The `session-start` hook runs automatically when a new Claude Code web session begins.
+This project originally had a session-start hook to set up iOS/macOS build tools. However, it was removed because:
 
-### What it does
+### Native macOS App Requirements
 
-- **On Linux (Claude Code Web)**:
-  - Checks for xtool (cross-platform Xcode replacement)
-  - Displays installation instructions if not present
-  - Verifies Swift and usbmuxd availability
-  - Provides information about building iOS apps on Linux
+This is a **native macOS application** using AppKit, not a Catalyst app. Building requires:
 
-- **On macOS**:
-  - Automatically installs Xcode command-line tools if not already present
-  - Verifies that Swift and xcodebuild are available
+- **Full Xcode on macOS** - Native macOS SDK (AppKit, IOKit, etc.)
+- **8GB+ Xcode.xip download** - Impractical to download every session
+- **macOS-specific APIs** - Cannot be built on Linux even with xtool
 
-### Why this is needed
+### Why xtool Doesn't Work Here
 
-This iOS/macOS project requires build tools. The session-start hook ensures:
+While [xtool](https://github.com/xtool-org/xtool) is an excellent tool for building iOS apps on Linux, this project has additional constraints:
 
-1. Developers are informed about build options (xtool on Linux, Xcode on macOS)
-2. Xcode tools are automatically set up on macOS environments
-3. Build tooling status is clearly communicated
-
-### Building iOS Apps on Linux with xtool
-
-[xtool](https://github.com/xtool-org/xtool) is a cross-platform Xcode replacement that allows building iOS apps on Linux and Windows.
-
-**Prerequisites:**
-- Swift 6.2 toolchain
-- usbmuxd (for iOS device communication)
-- Xcode.xip download from Apple Developer
-
-**Quick Setup:**
-```bash
-# Install prerequisites
-sudo apt-get update
-sudo apt-get install -y usbmuxd libimobiledevice-utils
-
-# Install Swift 6.2 from https://swift.org/install/linux
-
-# Install xtool
-curl -fL https://github.com/xtool-org/xtool/releases/latest/download/xtool-$(uname -m).AppImage -o xtool
-chmod +x xtool
-sudo mv xtool /usr/local/bin/
-
-# Setup xtool (requires Apple ID)
-xtool setup
+**Project Architecture:**
+```swift
+// From DeviceInfo.swift
+#if os(iOS)
+import UIKit
+#elseif os(macOS)
+import AppKit  // Native macOS frameworks
+import IOKit
+#endif
 ```
 
-**Important:** You'll need to download Xcode.xip from Apple Developer to extract the iOS SDK.
+**Platform Support (from Package.swift):**
+- iOS 17+ (can use xtool)
+- macOS 14+ (requires native macOS SDK - cannot use xtool)
 
-### Testing the hook
+### Build Options
 
-You can manually run the hook to see what it does:
-
+#### 1. **Local macOS Development (Recommended)**
+Build and test on your Mac with Xcode installed:
 ```bash
-./.claude/hooks/session-start
+# On macOS
+xcodebuild -scheme "Commonplace Book" \
+  -sdk iphonesimulator \
+  -destination 'platform=iOS Simulator,name=iPhone 15' \
+  build test
 ```
 
-### Environment Support
+#### 2. **GitHub Actions (CI/CD)**
+Set up automated builds using macOS runners:
+```yaml
+name: Build and Test
+on: [push, pull_request]
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Build iOS
+        run: xcodebuild -scheme "Commonplace Book" ...
+      - name: Build macOS
+        run: xcodebuild -scheme "Commonplace Book" ...
+```
 
-- ✅ **macOS**: Full support with automatic Xcode installation
-- ⚠️ **Linux/Web**: Limited support - displays helpful messages but cannot build iOS apps
-- ❓ **Windows**: Not tested - iOS development requires macOS
+#### 3. **xtool for iOS Only (Experimental)**
+If you only need to build the iOS version on Linux:
+```bash
+# Note: Only builds iOS, not macOS
+# Requires 8GB Xcode.xip download from Apple
+xtool build --platform iOS
+```
 
-### For Contributors
+### What Works in Claude Code Web (Linux)
 
-When working on this project:
+✅ **Code editing and review**
+✅ **Git operations** (commit, push, PR creation)
+✅ **Documentation updates**
+✅ **Planning and architecture**
+✅ **Issue management**
 
-- **On macOS**: The hook will automatically set up Xcode tools
-- **On Linux/Web**: Use for code editing and review; build/test locally or via CI/CD
-- **CI/CD**: Consider GitHub Actions with macOS runners for automated builds
+❌ **Building iOS apps** (requires Xcode.xip)
+❌ **Building macOS apps** (requires macOS + Xcode)
+❌ **Running tests** (requires build tools)
 
-### Related Documentation
+### Recommended Workflow
 
-- [Claude Code Hooks Documentation](https://code.claude.com/docs/en/claude-code-on-the-web)
+1. **Edit code** in Claude Code web (or locally)
+2. **Build and test** on your Mac
+3. **Use GitHub Actions** for automated CI/CD
+4. **Keep documentation** updated for team collaboration
+
+## Related Documentation
+
 - [Xcode Command-Line Tools](https://developer.apple.com/xcode/)
+- [xtool GitHub Repository](https://github.com/xtool-org/xtool) (iOS-only)
+- [GitHub Actions with macOS](https://docs.github.com/en/actions/using-github-hosted-runners/about-github-hosted-runners#supported-runners-and-hardware-resources)
