@@ -23,9 +23,9 @@ struct EnhancedNoteListView: View {
             case (.viewing(let lNote), .viewing(let rNote)):
                 return lNote.id == rNote.id
             case (.editing(let lVM), .editing(let rVM)):
-                return lVM.id == rVM.id
+                return ObjectIdentifier(lVM) == ObjectIdentifier(rVM)
             case (.creating(let lVM), .creating(let rVM)):
-                return lVM.id == rVM.id
+                return ObjectIdentifier(lVM) == ObjectIdentifier(rVM)
             default:
                 return false
             }
