@@ -19,27 +19,31 @@ struct NoteRowView: View {
     let note: Note
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 6) {
             // Title (bold)
             Text(note.title)
-                .font(.headline)
-                .fontWeight(.bold)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundColor(.primary)
                 .lineLimit(1)
 
             // Preview text (gray, smaller, truncated to 100 chars)
             if !note.content.isEmpty {
                 Text(previewText)
-                    .font(.subheadline)
-                    .foregroundColor(.gray)
+                    .font(.system(size: 13))
+                    .foregroundColor(.secondary)
                     .lineLimit(2)
+                    .opacity(0.8)
             }
 
             // Relative date
             Text(relativeDate)
-                .font(.caption)
+                .font(.system(size: 11))
                 .foregroundColor(.secondary)
+                .opacity(0.6)
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 8)
+        .padding(.horizontal, 4)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var previewText: String {

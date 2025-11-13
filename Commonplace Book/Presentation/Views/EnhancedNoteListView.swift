@@ -6,8 +6,31 @@ import SwiftUI
 struct EnhancedNoteListView: View {
     @ObservedObject var listViewModel: NoteListViewModel
     @ObservedObject var searchViewModel: SearchViewModel
-    @State private var showingCreateNote = false
-    @State private var createNoteViewModel: NoteViewModel?
+    @State private var selectedNote: Note?
+    @State private var detailState: DetailPaneState = .empty
+
+    /// Tracks what's displayed in the detail pane
+    enum DetailPaneState: Equatable {
+        case empty
+        case viewing(Note)
+        case editing(NoteViewModel)
+        case creating(NoteViewModel)
+
+        static func == (lhs: DetailPaneState, rhs: DetailPaneState) -> Bool {
+            switch (lhs, rhs) {
+            case (.empty, .empty):
+                return true
+            case (.viewing(let lNote), .viewing(let rNote)):
+                return lNote.id == rNote.id
+            case (.editing(let lVM), .editing(let rVM)):
+                return ObjectIdentifier(lVM) == ObjectIdentifier(rVM)
+            case (.creating(let lVM), .creating(let rVM)):
+                return ObjectIdentifier(lVM) == ObjectIdentifier(rVM)
+            default:
+                return false
+            }
+        }
+    }
 
     /// Determines current display mode
     private var isSearchMode: Bool {
@@ -15,7 +38,8 @@ struct EnhancedNoteListView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationSplitView {
+            // Sidebar: Note list
             VStack(spacing: 0) {
                 // Search bar at top
                 SearchBar(query: $searchViewModel.query)
@@ -32,9 +56,6 @@ struct EnhancedNoteListView: View {
                 }
             }
             .navigationTitle("Notes")
-            .navigationDestination(for: Note.self) { note in
-                NoteDetailView(note: note, repository: listViewModel.repository)
-            }
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button(action: createNewNote) {
@@ -42,21 +63,21 @@ struct EnhancedNoteListView: View {
                     }
                 }
             }
-            .sheet(isPresented: $showingCreateNote) {
-                if let viewModel = createNoteViewModel {
-                    NavigationStack {
-                        NoteEditView(viewModel: viewModel, onSave: {
-                            Task {
-                                await listViewModel.loadNotes()
-                            }
-                        })
-                    }
-                }
-            }
             .task {
                 await listViewModel.loadNotes()
             }
+            #if os(macOS)
+            .frame(minWidth: 280, idealWidth: 320, maxWidth: 400)
+            #endif
+        } detail: {
+            // Detail pane: Note detail, editor, or empty state
+            detailPane
         }
+        #if os(macOS)
+        .navigationSplitViewStyle(.balanced)
+        #else
+        .navigationSplitViewStyle(.automatic)
+        #endif
     }
 
     private func createNewNote() {
@@ -82,9 +103,105 @@ struct EnhancedNoteListView: View {
                 viewModel.created = timestamp
             }
 
-            createNoteViewModel = viewModel
-            showingCreateNote = true
+            // Show in detail pane
+            detailState = .creating(viewModel)
+            selectedNote = nil
         }
+    }
+
+    // MARK: - Detail Pane
+
+    @ViewBuilder
+    private var detailPane: some View {
+        switch detailState {
+        case .empty:
+            emptyDetailPane
+        case .viewing(let note):
+            noteDetailPane(note: note)
+        case .editing(let viewModel):
+            noteEditPane(viewModel: viewModel, isNew: false)
+        case .creating(let viewModel):
+            noteEditPane(viewModel: viewModel, isNew: true)
+        }
+    }
+
+    private var emptyDetailPane: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "note.text")
+                .font(.system(size: 64))
+                .foregroundColor(.secondary)
+            Text("Select a note")
+                .font(.title2)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func noteDetailPane(note: Note) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                // Title
+                Text(note.title)
+                    .font(.title)
+                    .fontWeight(.bold)
+
+                // Content
+                Text(contentWithoutTitle(note: note))
+                    .font(.body)
+                    .textSelection(.enabled)
+
+                Spacer()
+            }
+            .padding()
+        }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button("Edit") {
+                    openEditView(for: note)
+                }
+            }
+        }
+    }
+
+    private func noteEditPane(viewModel: NoteViewModel, isNew: Bool) -> some View {
+        NoteEditView(viewModel: viewModel, onSave: {
+            Task {
+                await listViewModel.loadNotes()
+                // Return to viewing the saved note
+                if let savedNote = try? await listViewModel.repository.read(id: viewModel.id) {
+                    await MainActor.run {
+                        detailState = .viewing(savedNote)
+                        selectedNote = savedNote
+                    }
+                }
+            }
+        }, onCancel: {
+            // Return to previous state
+            if isNew {
+                detailState = .empty
+                selectedNote = nil
+            } else if let note = selectedNote {
+                detailState = .viewing(note)
+            }
+        })
+    }
+
+    private func openEditView(for note: Note) {
+        Task {
+            let viewModel = NoteViewModel(repository: listViewModel.repository, noteId: note.id)
+            await viewModel.load()
+
+            await MainActor.run {
+                detailState = .editing(viewModel)
+            }
+        }
+    }
+
+    private func contentWithoutTitle(note: Note) -> String {
+        let titlePattern = "# \(note.title)"
+        let cleaned = note.content
+            .replacingOccurrences(of: titlePattern, with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return cleaned.isEmpty ? note.content : cleaned
     }
 
     // MARK: - Default Mode Content
@@ -104,11 +221,17 @@ struct EnhancedNoteListView: View {
     }
 
     private var defaultNotesList: some View {
-        List {
+        List(selection: $selectedNote) {
             ForEach(listViewModel.notes) { note in
-                NavigationLink(value: note) {
+                Button(action: {
+                    selectNote(note)
+                }) {
                     NoteRowView(note: note)
                 }
+                .buttonStyle(.plain)
+                .listRowInsets(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 8))
+                .listRowSeparator(.hidden)
+                .tag(note)
             }
 
             if listViewModel.isLoading {
@@ -122,6 +245,7 @@ struct EnhancedNoteListView: View {
         }
         .listStyle(.plain)
         .scrollDismissesKeyboard(.immediately)
+        .scrollContentBackground(.hidden)
         .refreshable {
             // Clear search when refreshing
             searchViewModel.clear()
@@ -136,6 +260,11 @@ struct EnhancedNoteListView: View {
                 })
             }
         }
+    }
+
+    private func selectNote(_ note: Note) {
+        selectedNote = note
+        detailState = .viewing(note)
     }
 
     private var defaultEmptyStateView: some View {
@@ -173,7 +302,9 @@ struct EnhancedNoteListView: View {
 
     private var searchResultsList: some View {
         SearchResultsListView(
-            searchViewModel: searchViewModel
+            searchViewModel: searchViewModel,
+            selectedNote: $selectedNote,
+            onSelectNote: selectNote
         )
     }
 
@@ -247,22 +378,31 @@ struct EnhancedNoteListView: View {
 
 struct SearchResultsListView: View {
     @ObservedObject var searchViewModel: SearchViewModel
+    @Binding var selectedNote: Note?
+    let onSelectNote: (Note) -> Void
     @State private var loadedNotes: [Note] = []
     @State private var loadTask: Task<Void, Never>?
     @State private var relevanceMap: [UUID: Float] = [:]
     @State private var loadGeneration: Int = 0
 
     var body: some View {
-        List {
+        List(selection: $selectedNote) {
             ForEach(loadedNotes) { note in
-                NavigationLink(value: note) {
+                Button(action: {
+                    onSelectNote(note)
+                }) {
                     SearchResultRowView(note: note, relevance: relevanceMap[note.id] ?? 0.0)
                 }
+                .buttonStyle(.plain)
+                .listRowInsets(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 8))
+                .listRowSeparator(.hidden)
+                .tag(note)
             }
         }
         .listStyle(.plain)
         .scrollDismissesKeyboard(.immediately)
-        .onChange(of: searchViewModel.results) { newResults in
+        .scrollContentBackground(.hidden)
+        .onChange(of: searchViewModel.results) { _, newResults in
             // Cancel previous load task
             loadTask?.cancel()
 
@@ -357,33 +497,39 @@ struct SearchResultRowView: View {
     let relevance: Float
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text(note.title)
-                    .font(.headline)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(.primary)
                     .accessibilityLabel("Note title: \(note.title)")
 
                 Spacer()
 
                 // Relevance indicator
                 Text("\(Int(relevance * 100))%")
-                    .font(.caption)
+                    .font(.system(size: 11))
                     .foregroundStyle(.secondary)
+                    .opacity(0.6)
                     .accessibilityLabel("Relevance: \(Int(relevance * 100)) percent")
             }
 
             Text(previewText)
-                .font(.subheadline)
+                .font(.system(size: 13))
                 .foregroundStyle(.secondary)
+                .opacity(0.8)
                 .lineLimit(2)
                 .accessibilityLabel("Note content: \(previewText)")
 
             Text(note.created, style: .relative)
-                .font(.caption)
+                .font(.system(size: 11))
                 .foregroundStyle(.secondary)
+                .opacity(0.6)
                 .accessibilityLabel("Created \(note.created, style: .relative)")
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 8)
+        .padding(.horizontal, 4)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var previewText: String {
