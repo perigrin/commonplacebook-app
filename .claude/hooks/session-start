@@ -1,0 +1,66 @@
+#!/bin/bash
+# ABOUTME: Session start hook to install Xcode command-line tools for building Swift/iOS projects
+# ABOUTME: Runs automatically when a new Claude Code web session starts
+
+set -e
+
+echo "🔧 Setting up Xcode command-line tools for iOS development..."
+
+# Check if running in a Linux environment (Claude Code on the web)
+if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    echo "⚠️  Note: Running in Linux environment. Full Xcode is not available."
+    echo "   iOS builds require macOS with Xcode installed."
+    echo "   Consider testing locally on macOS or using GitHub Actions for CI/CD."
+
+    # Install Swift if available in package manager (for syntax checking)
+    if command -v apt-get &> /dev/null; then
+        echo "📦 Attempting to install Swift for syntax validation..."
+
+        # Add Swift repository (if not already added)
+        if [ ! -f /etc/apt/sources.list.d/swift.list ]; then
+            echo "   Adding Swift repository..."
+            # Note: This is environment-specific and may not work in all containers
+            echo "   Skipping Swift installation - requires manual setup in this environment"
+        fi
+    fi
+
+    echo "✅ Environment check complete."
+    echo "   To build this project, you'll need to run it on macOS with Xcode installed."
+
+elif [[ "$OSTYPE" == "darwin"* ]]; then
+    # Running on macOS
+    echo "🍎 Detected macOS environment"
+
+    # Check if Xcode command-line tools are already installed
+    if xcode-select -p &> /dev/null; then
+        echo "✅ Xcode command-line tools already installed at: $(xcode-select -p)"
+    else
+        echo "📥 Installing Xcode command-line tools..."
+
+        # Install command-line tools
+        xcode-select --install
+
+        # Wait for installation to complete
+        echo "⏳ Waiting for installation to complete..."
+        until xcode-select -p &> /dev/null; do
+            sleep 5
+        done
+
+        echo "✅ Xcode command-line tools installed successfully"
+    fi
+
+    # Verify tools are working
+    if command -v swift &> /dev/null; then
+        echo "✅ Swift compiler: $(swift --version | head -n 1)"
+    fi
+
+    if command -v xcodebuild &> /dev/null; then
+        echo "✅ xcodebuild available"
+    fi
+else
+    echo "⚠️  Unknown operating system: $OSTYPE"
+fi
+
+echo ""
+echo "🎯 Session setup complete!"
+echo ""
