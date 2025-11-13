@@ -23,9 +23,9 @@ struct EnhancedNoteListView: View {
             case (.viewing(let lNote), .viewing(let rNote)):
                 return lNote.id == rNote.id
             case (.editing(let lVM), .editing(let rVM)):
-                return lVM.noteId == rVM.noteId
+                return lVM.id == rVM.id
             case (.creating(let lVM), .creating(let rVM)):
-                return lVM.noteId == rVM.noteId
+                return lVM.id == rVM.id
             default:
                 return false
             }
@@ -167,7 +167,7 @@ struct EnhancedNoteListView: View {
             Task {
                 await listViewModel.loadNotes()
                 // Return to viewing the saved note
-                if let savedNote = try? await listViewModel.repository.read(id: viewModel.noteId) {
+                if let savedNote = try? await listViewModel.repository.read(id: viewModel.id) {
                     await MainActor.run {
                         detailState = .viewing(savedNote)
                         selectedNote = savedNote
@@ -402,7 +402,7 @@ struct SearchResultsListView: View {
         .listStyle(.plain)
         .scrollDismissesKeyboard(.immediately)
         .scrollContentBackground(.hidden)
-        .onChange(of: searchViewModel.results) { newResults in
+        .onChange(of: searchViewModel.results) { _, newResults in
             // Cancel previous load task
             loadTask?.cancel()
 
