@@ -16,7 +16,7 @@ class NoteListViewModel: ObservableObject {
 
     // MARK: - Private Properties
 
-    private let repository: NoteRepository
+    let repository: NoteRepository // Internal access for creating new notes
     private let metadataCollector: MetadataCollector
     private var loadingOperations: Int = 0
 

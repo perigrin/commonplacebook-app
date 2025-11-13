@@ -15,27 +15,45 @@ import Combine
 
 /// AppCoordinator is responsible for managing app navigation and coordinating between different features
 class AppCoordinator: ObservableObject {
-    
+
     // MARK: - Properties
-    
+
+    private let noteRepository: NoteRepository
+    private let searchEngine: VectorSearchEngineProtocol
+    private let listViewModel: NoteListViewModel
+    private let searchViewModel: SearchViewModel
+
     /// The root view of the application
     var rootView: some View {
-        HomeView()
+        EnhancedNoteListView(
+            listViewModel: listViewModel,
+            searchViewModel: searchViewModel
+        )
     }
-    
+
     // MARK: - Initialization
-    
+
     init() {
+        // Initialize note repository (using InMemoryRepository for MVP)
+        // TODO: Replace with FileSystemNoteRepository or CRDTNoteRepository for production
+        self.noteRepository = InMemoryNoteRepository()
+
+        // Initialize vector search engine
+        self.searchEngine = VectorSearchEngine()
+
+        // Initialize view models
+        self.listViewModel = NoteListViewModel(repository: noteRepository, metadataCollector: MetadataCollector())
+        self.searchViewModel = SearchViewModel(searchEngine: searchEngine, repository: noteRepository)
+
         setupDependencies()
         configureAppearance()
     }
-    
+
     // MARK: - Setup Methods
-    
+
     /// Sets up the app dependencies
     private func setupDependencies() {
-        // Initialize services and repositories
-        // Example: let networkService = NetworkService()
+        // Additional dependency setup if needed
     }
     
     /// Configures global app appearance
