@@ -33,13 +33,17 @@ class AppCoordinator: ObservableObject {
 
     // MARK: - Initialization
 
+    @MainActor
     init() {
         // Initialize note repository (using InMemoryRepository for MVP)
         // TODO: Replace with FileSystemNoteRepository or CRDTNoteRepository for production
         self.noteRepository = InMemoryNoteRepository()
 
+        // Initialize embedding service for vector search
+        let embeddingService = EmbeddingService()
+
         // Initialize vector search engine
-        self.searchEngine = VectorSearchEngine()
+        self.searchEngine = VectorSearchEngine(embeddingService: embeddingService)
 
         // Initialize view models
         self.listViewModel = NoteListViewModel(repository: noteRepository, metadataCollector: MetadataCollector())
