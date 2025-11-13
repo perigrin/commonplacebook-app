@@ -31,6 +31,9 @@ struct EnhancedNoteListView: View {
                     }
                 }
             }
+            #if os(macOS)
+            .frame(maxWidth: 400)
+            #endif
             .navigationTitle("Notes")
             .navigationDestination(for: Note.self) { note in
                 NoteDetailView(note: note, repository: listViewModel.repository)
@@ -51,6 +54,9 @@ struct EnhancedNoteListView: View {
                             }
                         })
                     }
+                    #if os(macOS)
+                    .frame(minWidth: 600, minHeight: 500)
+                    #endif
                 }
             }
             .task {
