@@ -9,6 +9,7 @@ actor FileSystemNoteRepository: NoteRepository {
     private let directory: URL
     private let formatter: NoteFileFormatter
     private let fileManager: FileManager
+    private var gitSyncService: GitSyncService?
 
     // In-memory cache for performance
     private var cache: [UUID: Note] = [:]
@@ -21,10 +22,16 @@ actor FileSystemNoteRepository: NoteRepository {
     }
     private var cacheState: CacheState = .notLoaded
 
-    init(directory: URL) {
+    init(directory: URL, gitSyncService: GitSyncService? = nil) {
         self.directory = directory
         self.formatter = NoteFileFormatter()
         self.fileManager = FileManager.default
+        self.gitSyncService = gitSyncService
+    }
+
+    /// Set or update the git sync service
+    func setGitSyncService(_ service: GitSyncService?) {
+        self.gitSyncService = service
     }
 
     // MARK: - NoteRepository Protocol
@@ -46,6 +53,11 @@ actor FileSystemNoteRepository: NoteRepository {
 
         // Update cache
         cache[note.id] = note
+
+        // Trigger git commit if git sync is enabled
+        if let gitSync = gitSyncService {
+            await gitSync.commitNoteChange(noteID: note.id, action: .add, title: note.title)
+        }
 
         return note
     }
@@ -93,6 +105,11 @@ actor FileSystemNoteRepository: NoteRepository {
         // Update cache
         cache[note.id] = note
 
+        // Trigger git commit if git sync is enabled
+        if let gitSync = gitSyncService {
+            await gitSync.commitNoteChange(noteID: note.id, action: .update, title: note.title)
+        }
+
         return note
     }
 
@@ -117,6 +134,11 @@ actor FileSystemNoteRepository: NoteRepository {
 
         // Update cache
         cache[id] = note
+
+        // Trigger git commit if git sync is enabled
+        if let gitSync = gitSyncService {
+            await gitSync.commitNoteChange(noteID: note.id, action: .delete, title: note.title)
+        }
     }
 
     func list() async throws -> [Note] {
@@ -173,6 +195,11 @@ actor FileSystemNoteRepository: NoteRepository {
 
         // Update cache
         cache[id] = note
+
+        // Trigger git commit if git sync is enabled (treat as update)
+        if let gitSync = gitSyncService {
+            await gitSync.commitNoteChange(noteID: note.id, action: .update, title: note.title)
+        }
     }
 
     func purge(id: UUID) async throws {
@@ -182,6 +209,9 @@ actor FileSystemNoteRepository: NoteRepository {
         // Load cache if needed
         try await loadCacheIfNeeded()
 
+        // Get note title before removing from cache
+        let noteTitle = cache[id]?.title ?? "Unknown"
+
         // Remove from cache
         cache.removeValue(forKey: id)
 
@@ -189,6 +219,11 @@ actor FileSystemNoteRepository: NoteRepository {
         let filePath = noteFilePath(for: id)
         if fileManager.fileExists(atPath: filePath.path) {
             try fileManager.removeItem(at: filePath)
+
+            // Trigger git commit if git sync is enabled (permanent delete)
+            if let gitSync = gitSyncService {
+                await gitSync.commitNoteChange(noteID: id, action: .delete, title: "Purged: \(noteTitle)")
+            }
         }
     }
 

@@ -13,11 +13,17 @@ struct SettingsView: View {
     @State private var searchThreshold: Double = 0.7
     @State private var showingTrash = false
     @State private var showingAbout = false
+    @State private var showingGitSetup = false
 
     var body: some View {
         List {
             // Privacy & Security Section
             privacySecuritySection
+
+            #if os(macOS)
+            // Git Integration Section (macOS only)
+            gitIntegrationSection
+            #endif
 
             // Search Settings Section
             searchSettingsSection
@@ -39,7 +45,14 @@ struct SettingsView: View {
                 AboutView()
             }
         }
+        .sheet(isPresented: $showingGitSetup) {
+            NavigationStack {
+                GitSetupView()
+            }
+        }
     }
+
+    // MARK: - Sections
 
     // MARK: - Privacy & Security Section
 
@@ -89,6 +102,35 @@ struct SettingsView: View {
             Text("Database encryption protects your notes at rest. Biometric lock adds an extra layer of security.")
         }
     }
+
+    // MARK: - Git Integration Section
+
+    #if os(macOS)
+    private var gitIntegrationSection: some View {
+        Section {
+            // Setup/Configuration button
+            Button {
+                showingGitSetup = true
+            } label: {
+                HStack {
+                    Image(systemName: "arrow.triangle.branch")
+                        .foregroundColor(.accentColor)
+                    Text("Git Synchronization Setup")
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+            .foregroundColor(.primary)
+
+        } header: {
+            Text("Git Integration")
+        } footer: {
+            Text("Configure automatic git synchronization for your notes. Currently supported on macOS only.")
+        }
+    }
+    #endif
 
     // MARK: - Search Settings Section
 
