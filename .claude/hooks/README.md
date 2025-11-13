@@ -8,17 +8,51 @@ The `session-start` hook runs automatically when a new Claude Code web session b
 
 ### What it does
 
-- **On Linux (Claude Code Web)**: Displays information about the environment limitations and suggests running builds locally on macOS
-- **On macOS**: Automatically installs Xcode command-line tools if not already present
-- Verifies that Swift and xcodebuild are available
+- **On Linux (Claude Code Web)**:
+  - Checks for xtool (cross-platform Xcode replacement)
+  - Displays installation instructions if not present
+  - Verifies Swift and usbmuxd availability
+  - Provides information about building iOS apps on Linux
+
+- **On macOS**:
+  - Automatically installs Xcode command-line tools if not already present
+  - Verifies that Swift and xcodebuild are available
 
 ### Why this is needed
 
-This iOS/macOS project requires Xcode to build and test. The session-start hook ensures:
+This iOS/macOS project requires build tools. The session-start hook ensures:
 
-1. Developers are informed about environment limitations when using Claude Code on the web
+1. Developers are informed about build options (xtool on Linux, Xcode on macOS)
 2. Xcode tools are automatically set up on macOS environments
-3. Build tooling is ready before attempting compilation
+3. Build tooling status is clearly communicated
+
+### Building iOS Apps on Linux with xtool
+
+[xtool](https://github.com/xtool-org/xtool) is a cross-platform Xcode replacement that allows building iOS apps on Linux and Windows.
+
+**Prerequisites:**
+- Swift 6.2 toolchain
+- usbmuxd (for iOS device communication)
+- Xcode.xip download from Apple Developer
+
+**Quick Setup:**
+```bash
+# Install prerequisites
+sudo apt-get update
+sudo apt-get install -y usbmuxd libimobiledevice-utils
+
+# Install Swift 6.2 from https://swift.org/install/linux
+
+# Install xtool
+curl -fL https://github.com/xtool-org/xtool/releases/latest/download/xtool-$(uname -m).AppImage -o xtool
+chmod +x xtool
+sudo mv xtool /usr/local/bin/
+
+# Setup xtool (requires Apple ID)
+xtool setup
+```
+
+**Important:** You'll need to download Xcode.xip from Apple Developer to extract the iOS SDK.
 
 ### Testing the hook
 

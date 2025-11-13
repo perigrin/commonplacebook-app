@@ -1,31 +1,65 @@
 #!/bin/bash
-# ABOUTME: Session start hook to install Xcode command-line tools for building Swift/iOS projects
+# ABOUTME: Session start hook to install iOS development tools (Xcode or xtool)
 # ABOUTME: Runs automatically when a new Claude Code web session starts
 
 set -e
 
-echo "🔧 Setting up Xcode command-line tools for iOS development..."
+echo "🔧 Setting up iOS development environment..."
 
 # Check if running in a Linux environment (Claude Code on the web)
 if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-    echo "⚠️  Note: Running in Linux environment. Full Xcode is not available."
-    echo "   iOS builds require macOS with Xcode installed."
-    echo "   Consider testing locally on macOS or using GitHub Actions for CI/CD."
+    echo "🐧 Linux environment detected"
+    echo ""
+    echo "📋 iOS Build Options on Linux:"
+    echo "   1. xtool - Cross-platform Xcode replacement (recommended for Linux)"
+    echo "   2. macOS with Xcode - Traditional approach"
+    echo "   3. GitHub Actions - Automated builds"
+    echo ""
 
-    # Install Swift if available in package manager (for syntax checking)
-    if command -v apt-get &> /dev/null; then
-        echo "📦 Attempting to install Swift for syntax validation..."
-
-        # Add Swift repository (if not already added)
-        if [ ! -f /etc/apt/sources.list.d/swift.list ]; then
-            echo "   Adding Swift repository..."
-            # Note: This is environment-specific and may not work in all containers
-            echo "   Skipping Swift installation - requires manual setup in this environment"
-        fi
+    # Check if xtool is already installed
+    if command -v xtool &> /dev/null; then
+        echo "✅ xtool already installed: $(xtool --version 2>/dev/null || echo 'unknown version')"
+    else
+        echo "📦 xtool not found. To install:"
+        echo ""
+        echo "   # Install prerequisites:"
+        echo "   sudo apt-get update"
+        echo "   sudo apt-get install -y usbmuxd libimobiledevice-utils"
+        echo ""
+        echo "   # Install Swift 6.2 from https://swift.org/install/linux"
+        echo ""
+        echo "   # Install xtool:"
+        echo "   curl -fL https://github.com/xtool-org/xtool/releases/latest/download/xtool-\$(uname -m).AppImage -o xtool"
+        echo "   chmod +x xtool"
+        echo "   sudo mv xtool /usr/local/bin/"
+        echo ""
+        echo "   # Setup xtool (requires Apple ID):"
+        echo "   xtool setup"
+        echo ""
+        echo "   Note: You'll need to download Xcode.xip from Apple Developer"
+        echo "   https://download.developer.apple.com/Developer_Tools/"
+        echo ""
     fi
 
-    echo "✅ Environment check complete."
-    echo "   To build this project, you'll need to run it on macOS with Xcode installed."
+    # Check for Swift
+    if command -v swift &> /dev/null; then
+        echo "✅ Swift compiler: $(swift --version | head -n 1)"
+    else
+        echo "⚠️  Swift not installed - required for xtool"
+        echo "   Install from: https://swift.org/install/linux"
+    fi
+
+    # Check for usbmuxd
+    if command -v usbmuxd &> /dev/null; then
+        echo "✅ usbmuxd available"
+    else
+        echo "⚠️  usbmuxd not installed - required for iOS device communication"
+    fi
+
+    echo ""
+    echo "📖 Learn more about xtool: https://github.com/xtool-org/xtool"
+    echo "   xtool allows building iOS apps on Linux using SwiftPM"
+    echo ""
 
 elif [[ "$OSTYPE" == "darwin"* ]]; then
     # Running on macOS
