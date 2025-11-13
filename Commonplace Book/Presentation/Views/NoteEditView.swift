@@ -29,7 +29,9 @@ struct NoteEditView: View {
             }
         }
         .navigationTitle(viewModel.title.isEmpty ? "New Note" : "Edit Note")
+        #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
+        #endif
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("Cancel") {
