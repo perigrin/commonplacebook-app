@@ -3,6 +3,11 @@
 
 import SwiftUI
 
+#if os(macOS)
+import AppKit
+#endif
+
+#if os(macOS)
 /// Git setup wizard view
 struct GitSetupView: View {
     @Environment(\.dismiss) private var dismiss
@@ -497,3 +502,4 @@ struct PublicKeyView: View {
         GitSetupView()
     }
 }
+#endif // os(macOS)

@@ -13,7 +13,9 @@ struct SettingsView: View {
     @State private var searchThreshold: Double = 0.7
     @State private var showingTrash = false
     @State private var showingAbout = false
+    #if os(macOS)
     @State private var showingGitSetup = false
+    #endif
 
     var body: some View {
         List {
@@ -45,11 +47,13 @@ struct SettingsView: View {
                 AboutView()
             }
         }
+        #if os(macOS)
         .sheet(isPresented: $showingGitSetup) {
             NavigationStack {
                 GitSetupView()
             }
         }
+        #endif
     }
 
     // MARK: - Sections
