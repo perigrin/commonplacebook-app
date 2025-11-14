@@ -23,7 +23,7 @@ struct NoteDetailView: View {
                 // Content
                 Divider()
 
-                Text(contentWithoutTitle)
+                Text(renderedMarkdownContent)
                     .font(.body)
                     .textSelection(.enabled)
 
@@ -126,6 +126,16 @@ struct NoteDetailView: View {
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
         return cleaned.isEmpty ? note.content : cleaned
+    }
+
+    private var renderedMarkdownContent: AttributedString {
+        // Convert markdown to AttributedString for rich text rendering
+        do {
+            return try AttributedString(markdown: contentWithoutTitle)
+        } catch {
+            // Fallback to plain text if markdown parsing fails
+            return AttributedString(contentWithoutTitle)
+        }
     }
 
     private var formattedDate: String {
