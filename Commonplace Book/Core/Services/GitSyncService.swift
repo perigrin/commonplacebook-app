@@ -46,6 +46,7 @@ enum GitSyncEvent {
     case syncDisabled
 }
 
+#if os(macOS)
 /// Service for automatic git synchronization
 actor GitSyncService {
     private let gitService: GitService
@@ -344,6 +345,7 @@ actor GitSyncService {
         return files
     }
 }
+#endif // os(macOS)
 
 // MARK: - Note Action
 

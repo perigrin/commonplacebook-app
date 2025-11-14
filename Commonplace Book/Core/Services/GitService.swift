@@ -51,6 +51,7 @@ struct GitStatus {
     let untrackedFiles: [String]
 }
 
+#if os(macOS)
 /// Service for git repository operations
 actor GitService {
     private let sshKeyService: SSHKeyService
@@ -481,3 +482,4 @@ actor GitService {
         }
     }
 }
+#endif // os(macOS)

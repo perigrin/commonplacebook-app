@@ -31,6 +31,7 @@ struct SSHKeyPair {
     let privateKey: String
 }
 
+#if os(macOS)
 /// Service for managing SSH keys for git authentication
 actor SSHKeyService {
     private let securityManager: SecurityManaging
@@ -225,3 +226,4 @@ actor SSHKeyService {
         return keyFile
     }
 }
+#endif // os(macOS)
