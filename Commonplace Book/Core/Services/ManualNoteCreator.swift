@@ -1,5 +1,5 @@
 // ABOUTME: Service for creating notes from manual text input with auto-title generation
-// ABOUTME: Handles title extraction from content, metadata collection, and note persistence
+// ABOUTME: Handles title extraction from content, metadata collection, and note service integration
 
 import Foundation
 
@@ -9,7 +9,7 @@ class ManualNoteCreator {
 
     // MARK: - Dependencies
 
-    private let repository: NoteRepository
+    private let noteService: NoteService
     private let metadataCollector: MetadataCollector
     private let titleGenerator: TitleGenerator
 
@@ -24,8 +24,8 @@ class ManualNoteCreator {
 
     // MARK: - Initialization
 
-    init(repository: NoteRepository, metadataCollector: MetadataCollector, titleGenerator: TitleGenerator? = nil) {
-        self.repository = repository
+    init(noteService: NoteService, metadataCollector: MetadataCollector, titleGenerator: TitleGenerator? = nil) {
+        self.noteService = noteService
         self.metadataCollector = metadataCollector
         self.titleGenerator = titleGenerator ?? TitleGenerator()
     }
@@ -65,8 +65,8 @@ class ManualNoteCreator {
             unknownFrontmatterFields: [:]
         )
 
-        // Save to repository
-        return try await repository.create(note: note)
+        // Save to note service (automatically indexes for search)
+        return try await noteService.create(note: note)
     }
 
     // MARK: - Private Helpers

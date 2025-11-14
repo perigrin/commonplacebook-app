@@ -370,16 +370,23 @@ struct CaptureView: View {
 #Preview("Initial State") {
     let repository = InMemoryNoteRepository()
     let metadataCollector = MetadataCollector()
+    let embeddingService = EmbeddingService()
+    let searchEngine = VectorSearchEngine(embeddingService: embeddingService)
+    let noteService = NoteService(
+        repository: repository,
+        searchEngine: searchEngine,
+        embeddingService: embeddingService
+    )
 
     return CaptureView(
         viewModel: CaptureViewModel(
             speechService: SpeechRecognitionService(),
             audioMonitor: AudioLevelMonitor(),
             metadataCollector: metadataCollector,
-            repository: repository
+            noteService: noteService
         ),
         manualNoteCreator: ManualNoteCreator(
-            repository: repository,
+            noteService: noteService,
             metadataCollector: metadataCollector
         )
     )

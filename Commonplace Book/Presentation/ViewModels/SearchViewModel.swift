@@ -18,7 +18,7 @@ class SearchViewModel: ObservableObject {
     // MARK: - Private Properties
 
     private let searchEngine: VectorSearchEngineProtocol
-    let repository: NoteRepository // Internal access for SearchResultsListView
+    let noteService: NoteService // Internal access for SearchResultsListView
     private var cancellables = Set<AnyCancellable>()
     private let debounceInterval: TimeInterval = 0.5 // 500ms
     private var currentSearchTask: Task<Void, Never>?
@@ -26,9 +26,9 @@ class SearchViewModel: ObservableObject {
 
     // MARK: - Initialization
 
-    init(searchEngine: VectorSearchEngineProtocol, repository: NoteRepository) {
+    init(searchEngine: VectorSearchEngineProtocol, noteService: NoteService) {
         self.searchEngine = searchEngine
-        self.repository = repository
+        self.noteService = noteService
 
         setupQueryObserver()
     }
@@ -75,7 +75,7 @@ class SearchViewModel: ObservableObject {
             for result in results {
                 group.addTask {
                     do {
-                        return try await self.repository.read(id: result.noteId)
+                        return try await self.noteService.read(id: result.noteId)
                     } catch {
                         print("Error loading note \(result.noteId): \(error)")
                         return nil
