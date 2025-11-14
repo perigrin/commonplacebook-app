@@ -19,6 +19,7 @@ class AppCoordinator: ObservableObject {
     // MARK: - Properties
 
     private let noteService: NoteService
+    private let embeddingService: EmbeddingServiceProtocol
     private let searchEngine: VectorSearchEngineProtocol
     private let listViewModel: NoteListViewModel
     private let searchViewModel: SearchViewModel
@@ -42,7 +43,7 @@ class AppCoordinator: ObservableObject {
         let noteRepository = FileSystemNoteRepository(directory: notesDirectory)
 
         // Initialize embedding service for vector search
-        let embeddingService = EmbeddingService()
+        self.embeddingService = EmbeddingService()
 
         // Initialize vector search engine
         self.searchEngine = VectorSearchEngine(embeddingService: embeddingService)
@@ -89,8 +90,8 @@ class AppCoordinator: ObservableObject {
     /// - Parameter noteId: UUID of the note to index
     func indexNote(id noteId: UUID) async {
         do {
-            // Read note from repository
-            guard let note = try await noteRepository.read(id: noteId) else {
+            // Read note from note service
+            guard let note = try await noteService.read(id: noteId) else {
                 Logger.warning("Note \(noteId) not found for indexing", category: .database)
                 return
             }
