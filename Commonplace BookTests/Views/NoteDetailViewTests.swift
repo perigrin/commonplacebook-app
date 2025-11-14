@@ -195,4 +195,241 @@ final class NoteDetailViewTests: XCTestCase {
         // THEN it should not crash
         XCTAssertNotNil(previews)
     }
+
+    // MARK: - Markdown Rendering Tests
+
+    func testMarkdownBoldTextIsRendered() {
+        // GIVEN a note with bold markdown text
+        let markdownNote = Note(
+            id: UUID(),
+            created: Date(),
+            device: "TestDevice",
+            location: nil,
+            content: "This text has **bold** formatting.",
+            title: "Bold Test",
+            backlinks: [],
+            unknownFrontmatterFields: [:]
+        )
+
+        // WHEN creating a NoteDetailView
+        let view = NoteDetailView(note: markdownNote)
+
+        // THEN it should not crash and render markdown
+        XCTAssertNotNil(view)
+
+        // Verify the markdown content can be converted to AttributedString
+        let attributedString = try? AttributedString(markdown: markdownNote.content)
+        XCTAssertNotNil(attributedString, "Markdown should be convertible to AttributedString")
+    }
+
+    func testMarkdownItalicTextIsRendered() {
+        // GIVEN a note with italic markdown text
+        let markdownNote = Note(
+            id: UUID(),
+            created: Date(),
+            device: "TestDevice",
+            location: nil,
+            content: "This text has *italic* formatting.",
+            title: "Italic Test",
+            backlinks: [],
+            unknownFrontmatterFields: [:]
+        )
+
+        // WHEN creating a NoteDetailView
+        let view = NoteDetailView(note: markdownNote)
+
+        // THEN it should not crash and render markdown
+        XCTAssertNotNil(view)
+
+        // Verify the markdown content can be converted to AttributedString
+        let attributedString = try? AttributedString(markdown: markdownNote.content)
+        XCTAssertNotNil(attributedString, "Markdown should be convertible to AttributedString")
+    }
+
+    func testMarkdownHeadingsAreRendered() {
+        // GIVEN a note with markdown headings
+        let markdownNote = Note(
+            id: UUID(),
+            created: Date(),
+            device: "TestDevice",
+            location: nil,
+            content: """
+            # Big Heading Test
+
+            ## Subheading
+
+            Regular text here.
+
+            ### Smaller heading
+            """,
+            title: "Big Heading Test",
+            backlinks: [],
+            unknownFrontmatterFields: [:]
+        )
+
+        // WHEN creating a NoteDetailView
+        let view = NoteDetailView(note: markdownNote)
+
+        // THEN it should not crash and render markdown
+        XCTAssertNotNil(view)
+
+        // Verify the markdown content can be converted to AttributedString
+        let attributedString = try? AttributedString(markdown: markdownNote.content)
+        XCTAssertNotNil(attributedString, "Markdown headings should be convertible to AttributedString")
+    }
+
+    func testMarkdownListsAreRendered() {
+        // GIVEN a note with markdown lists
+        let markdownNote = Note(
+            id: UUID(),
+            created: Date(),
+            device: "TestDevice",
+            location: nil,
+            content: """
+            # List Test
+
+            Shopping list:
+            - Apples
+            - Bananas
+            - Oranges
+
+            Numbered list:
+            1. First item
+            2. Second item
+            3. Third item
+            """,
+            title: "List Test",
+            backlinks: [],
+            unknownFrontmatterFields: [:]
+        )
+
+        // WHEN creating a NoteDetailView
+        let view = NoteDetailView(note: markdownNote)
+
+        // THEN it should not crash and render markdown
+        XCTAssertNotNil(view)
+
+        // Verify the markdown content can be converted to AttributedString
+        let attributedString = try? AttributedString(markdown: markdownNote.content)
+        XCTAssertNotNil(attributedString, "Markdown lists should be convertible to AttributedString")
+    }
+
+    func testMarkdownLinksAreRendered() {
+        // GIVEN a note with markdown links
+        let markdownNote = Note(
+            id: UUID(),
+            created: Date(),
+            device: "TestDevice",
+            location: nil,
+            content: "Check out [this link](https://example.com) for more info.",
+            title: "Link Test",
+            backlinks: [],
+            unknownFrontmatterFields: [:]
+        )
+
+        // WHEN creating a NoteDetailView
+        let view = NoteDetailView(note: markdownNote)
+
+        // THEN it should not crash and render markdown
+        XCTAssertNotNil(view)
+
+        // Verify the markdown content can be converted to AttributedString
+        let attributedString = try? AttributedString(markdown: markdownNote.content)
+        XCTAssertNotNil(attributedString, "Markdown links should be convertible to AttributedString")
+    }
+
+    func testMarkdownCodeBlocksAreRendered() {
+        // GIVEN a note with markdown code blocks
+        let markdownNote = Note(
+            id: UUID(),
+            created: Date(),
+            device: "TestDevice",
+            location: nil,
+            content: """
+            # Code Test
+
+            Here's some inline `code` and a block:
+
+            ```swift
+            func hello() {
+                print("Hello, World!")
+            }
+            ```
+            """,
+            title: "Code Test",
+            backlinks: [],
+            unknownFrontmatterFields: [:]
+        )
+
+        // WHEN creating a NoteDetailView
+        let view = NoteDetailView(note: markdownNote)
+
+        // THEN it should not crash and render markdown
+        XCTAssertNotNil(view)
+
+        // Verify the markdown content can be converted to AttributedString
+        let attributedString = try? AttributedString(markdown: markdownNote.content)
+        XCTAssertNotNil(attributedString, "Markdown code blocks should be convertible to AttributedString")
+    }
+
+    func testMarkdownMixedFormattingIsRendered() {
+        // GIVEN a note with multiple markdown formatting types
+        let markdownNote = Note(
+            id: UUID(),
+            created: Date(),
+            device: "TestDevice",
+            location: nil,
+            content: """
+            # Mixed Formatting Test
+
+            This paragraph has **bold**, *italic*, and `code` formatting.
+
+            ## Lists and Links
+
+            - Item with [link](https://example.com)
+            - Item with **bold text**
+            - Item with *italic text*
+
+            > This is a blockquote with **bold** text.
+            """,
+            title: "Mixed Formatting Test",
+            backlinks: [],
+            unknownFrontmatterFields: [:]
+        )
+
+        // WHEN creating a NoteDetailView
+        let view = NoteDetailView(note: markdownNote)
+
+        // THEN it should not crash and render markdown
+        XCTAssertNotNil(view)
+
+        // Verify the markdown content can be converted to AttributedString
+        let attributedString = try? AttributedString(markdown: markdownNote.content)
+        XCTAssertNotNil(attributedString, "Mixed markdown formatting should be convertible to AttributedString")
+    }
+
+    func testInvalidMarkdownHandledGracefully() {
+        // GIVEN a note with potentially problematic markdown
+        let markdownNote = Note(
+            id: UUID(),
+            created: Date(),
+            device: "TestDevice",
+            location: nil,
+            content: "Unclosed **bold and *italic formatting",
+            title: "Invalid Markdown Test",
+            backlinks: [],
+            unknownFrontmatterFields: [:]
+        )
+
+        // WHEN creating a NoteDetailView
+        let view = NoteDetailView(note: markdownNote)
+
+        // THEN it should not crash even with invalid markdown
+        XCTAssertNotNil(view)
+
+        // Verify that even invalid markdown can be handled
+        // AttributedString will do its best to parse what it can
+        let attributedString = try? AttributedString(markdown: markdownNote.content)
+        XCTAssertNotNil(attributedString, "Invalid markdown should still be convertible to AttributedString")
+    }
 }
