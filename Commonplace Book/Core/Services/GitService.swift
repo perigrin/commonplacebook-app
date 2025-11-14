@@ -88,7 +88,7 @@ actor GitService {
         }
 
         // Set default branch name to main
-        try await runGitCommand(["config", "init.defaultBranch", "main"], in: path)
+        _ = try await runGitCommand(["config", "init.defaultBranch", "main"], in: path)
 
         Logger.info("Initialized git repository at \(path.path)", category: .git)
         #else
@@ -265,7 +265,12 @@ actor GitService {
         var environment = ProcessInfo.processInfo.environment
         environment["GIT_SSH_COMMAND"] = sshCommand
 
-        let branchName = branch ?? try await getCurrentBranch(in: path)
+        let branchName: String
+        if let branch = branch {
+            branchName = branch
+        } else {
+            branchName = try await getCurrentBranch(in: path)
+        }
 
         var arguments = ["push"]
         if setUpstream {
@@ -303,7 +308,12 @@ actor GitService {
         var environment = ProcessInfo.processInfo.environment
         environment["GIT_SSH_COMMAND"] = sshCommand
 
-        let branchName = branch ?? try await getCurrentBranch(in: path)
+        let branchName: String
+        if let branch = branch {
+            branchName = branch
+        } else {
+            branchName = try await getCurrentBranch(in: path)
+        }
 
         _ = try await runGitCommand(["pull", remote, branchName], in: path, environment: environment)
         Logger.info("Pulled from \(remote)/\(branchName)", category: .git)
