@@ -20,7 +20,7 @@ class CaptureViewModel: ObservableObject {
     private let speechService: SpeechRecognitionService
     private let audioMonitor: AudioLevelMonitor
     private let metadataCollector: MetadataCollector
-    private let repository: NoteRepository
+    private let noteService: NoteService
     private let titleGenerator: TitleGenerator
     private var cancellables = Set<AnyCancellable>()
 
@@ -29,12 +29,12 @@ class CaptureViewModel: ObservableObject {
     init(speechService: SpeechRecognitionService? = nil,
          audioMonitor: AudioLevelMonitor? = nil,
          metadataCollector: MetadataCollector? = nil,
-         repository: NoteRepository,
+         noteService: NoteService,
          titleGenerator: TitleGenerator? = nil) {
         self.speechService = speechService ?? SpeechRecognitionService()
         self.audioMonitor = audioMonitor ?? AudioLevelMonitor()
         self.metadataCollector = metadataCollector ?? MetadataCollector()
-        self.repository = repository
+        self.noteService = noteService
         self.titleGenerator = titleGenerator ?? TitleGenerator()
 
         setupBindings()
@@ -187,9 +187,9 @@ class CaptureViewModel: ObservableObject {
             unknownFrontmatterFields: [:]
         )
 
-        // Save to repository
+        // Save to note service (automatically indexes for search)
         do {
-            let savedNote = try await repository.create(note: note)
+            let savedNote = try await noteService.create(note: note)
 
             // Clear transcription after successful save
             transcription = ""
