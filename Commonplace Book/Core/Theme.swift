@@ -11,11 +11,11 @@ enum Theme {
     /// Color palette based on moody gray-purple scheme
     enum Colors {
         // Base colors from palette
-        static let jet = Color(hex: "#2c302e")           // Dark background
-        static let outerSpace = Color(hex: "#474a48")    // Medium dark background
-        static let battleshipGray = Color(hex: "#909590") // Secondary text
-        static let grape = Color(hex: "#6829c7")         // Accent/primary
-        static let spaceCadet = Color(hex: "#34305f")    // Alternative dark
+        static let jet = Color(hex: "#2c302e") ?? Color.black           // Dark background
+        static let outerSpace = Color(hex: "#474a48") ?? Color.gray    // Medium dark background
+        static let battleshipGray = Color(hex: "#909590") ?? Color.gray // Secondary text
+        static let grape = Color(hex: "#6829c7") ?? Color.purple         // Accent/primary
+        static let spaceCadet = Color(hex: "#34305f") ?? Color.blue    // Alternative dark
 
         // Semantic colors
         static let primaryBackground = jet
@@ -60,34 +60,5 @@ enum Theme {
         static let small: CGFloat = 4
         static let medium: CGFloat = 8
         static let large: CGFloat = 12
-    }
-}
-
-// MARK: - Color Extension for Hex Support
-
-extension Color {
-    init(hex: String) {
-        let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
-        var int: UInt64 = 0
-        Scanner(string: hex).scanHexInt64(&int)
-        let a, r, g, b: UInt64
-        switch hex.count {
-        case 3: // RGB (12-bit)
-            (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
-        case 6: // RGB (24-bit)
-            (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
-        case 8: // ARGB (32-bit)
-            (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
-        default:
-            (a, r, g, b) = (255, 0, 0, 0)
-        }
-
-        self.init(
-            .sRGB,
-            red: Double(r) / 255,
-            green: Double(g) / 255,
-            blue: Double(b) / 255,
-            opacity: Double(a) / 255
-        )
     }
 }
