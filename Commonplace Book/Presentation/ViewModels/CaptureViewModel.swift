@@ -90,11 +90,7 @@ class CaptureViewModel: ObservableObject {
         } catch {
             self.error = error
             // Clean up: stop speech recognition
-            do {
-                _ = try await speechService.stopRecording()
-            } catch {
-                // Ignore cleanup errors, original error already set
-            }
+            _ = await speechService.stopRecording()
             return
         }
 

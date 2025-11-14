@@ -17,15 +17,20 @@ class NoteListViewModel: ObservableObject {
     // MARK: - Private Properties
 
     let noteService: NoteService // Internal access for creating new notes
+    let repository: NoteRepository // Internal access for NoteViewModel creation
     private let metadataCollector: MetadataCollector
     private var loadingOperations: Int = 0
 
     // MARK: - Initialization
 
-    /// Initialize view model with note service
-    /// - Parameter noteService: Service for note persistence and search indexing
-    init(noteService: NoteService, metadataCollector: MetadataCollector? = nil) {
+    /// Initialize view model with note service and repository
+    /// - Parameters:
+    ///   - noteService: Service for note persistence and search indexing
+    ///   - repository: Repository for direct note access (used by NoteViewModel)
+    ///   - metadataCollector: Optional metadata collector
+    init(noteService: NoteService, repository: NoteRepository, metadataCollector: MetadataCollector? = nil) {
         self.noteService = noteService
+        self.repository = repository
         self.metadataCollector = metadataCollector ?? MetadataCollector()
     }
 

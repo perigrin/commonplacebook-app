@@ -55,9 +55,9 @@ class AppCoordinator: ObservableObject {
             embeddingService: embeddingService
         )
 
-        // Initialize view models with note service
-        self.listViewModel = NoteListViewModel(noteService: noteService, metadataCollector: MetadataCollector())
-        self.searchViewModel = SearchViewModel(searchEngine: searchEngine, noteService: noteService)
+        // Initialize view models with note service and repository
+        self.listViewModel = NoteListViewModel(noteService: noteService, repository: noteRepository, metadataCollector: MetadataCollector())
+        self.searchViewModel = SearchViewModel(searchEngine: searchEngine, noteService: noteService, repository: noteRepository)
 
         setupDependencies()
         configureAppearance()

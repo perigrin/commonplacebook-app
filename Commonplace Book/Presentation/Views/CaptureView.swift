@@ -337,7 +337,7 @@ struct CaptureView: View {
                 #if DEBUG
                 print("Manual note saved: \(note.id)")
                 #endif
-            } catch let error as ManualNoteCreatorError {
+            } catch is ManualNoteCreatorError {
                 // Map to CaptureViewModelError or show specific alert
                 viewModel.error = CaptureViewModelError.emptyTranscription // Reusing for now
             } catch {
