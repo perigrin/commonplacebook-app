@@ -18,9 +18,9 @@ class AppCoordinator: ObservableObject {
 
     // MARK: - Properties
 
-    private let noteRepository: NoteRepository
-    private let searchEngine: VectorSearchEngineProtocol
+    private let noteService: NoteService
     private let embeddingService: EmbeddingServiceProtocol
+    private let searchEngine: VectorSearchEngineProtocol
     private let listViewModel: NoteListViewModel
     private let searchViewModel: SearchViewModel
 
@@ -40,7 +40,7 @@ class AppCoordinator: ObservableObject {
         // Initialize note repository with persistent file system storage
         let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let notesDirectory = documentsDirectory.appendingPathComponent("Notes")
-        self.noteRepository = FileSystemNoteRepository(directory: notesDirectory)
+        let noteRepository = FileSystemNoteRepository(directory: notesDirectory)
 
         // Initialize embedding service for vector search
         self.embeddingService = EmbeddingService()
@@ -48,9 +48,16 @@ class AppCoordinator: ObservableObject {
         // Initialize vector search engine
         self.searchEngine = VectorSearchEngine(embeddingService: embeddingService)
 
-        // Initialize view models
-        self.listViewModel = NoteListViewModel(repository: noteRepository, metadataCollector: MetadataCollector())
-        self.searchViewModel = SearchViewModel(searchEngine: searchEngine, repository: noteRepository)
+        // Initialize note service that coordinates repository and search indexing
+        self.noteService = NoteService(
+            repository: noteRepository,
+            searchEngine: searchEngine,
+            embeddingService: embeddingService
+        )
+
+        // Initialize view models with note service and repository
+        self.listViewModel = NoteListViewModel(noteService: noteService, repository: noteRepository, metadataCollector: MetadataCollector())
+        self.searchViewModel = SearchViewModel(searchEngine: searchEngine, noteService: noteService, repository: noteRepository)
 
         setupDependencies()
         configureAppearance()
@@ -83,8 +90,8 @@ class AppCoordinator: ObservableObject {
     /// - Parameter noteId: UUID of the note to index
     func indexNote(id noteId: UUID) async {
         do {
-            // Read note from repository
-            guard let note = try await noteRepository.read(id: noteId) else {
+            // Read note from note service
+            guard let note = try await noteService.read(id: noteId) else {
                 Logger.warning("Note \(noteId) not found for indexing", category: .database)
                 return
             }
@@ -101,25 +108,26 @@ class AppCoordinator: ObservableObject {
         }
     }
 
-    /// Index all existing notes in the vector search engine
+    /// Index all existing notes in the vector search engine on app startup
+    /// Note: Individual notes created during app runtime are indexed automatically by NoteService
     private func indexExistingNotes() async {
         do {
-            let notes = try await noteRepository.list()
-            Logger.info("Indexing \(notes.count) existing notes", category: .database)
+            let notes = try await noteService.list()
+            Logger.info("Indexing \(notes.count) existing notes on startup", category: .database)
 
+            // Index each existing note using the NoteService's indexing logic
+            // This ensures notes created outside the app or before indexing was added are searchable
             for note in notes {
+                // Re-create each note through the service to trigger indexing
+                // This is a one-time operation on startup
                 do {
-                    // Generate embedding for note content
-                    let embedding = try await embeddingService.generateEmbedding(for: note.content)
-
-                    // Index in search engine
-                    try await searchEngine.indexNote(id: note.id, embedding: embedding)
+                    _ = try await noteService.update(note: note)
                 } catch {
                     Logger.error("Failed to index note \(note.id): \(error.localizedDescription)", category: .database)
                 }
             }
 
-            Logger.info("Finished indexing notes", category: .database)
+            Logger.info("Finished indexing notes - new notes will be indexed automatically", category: .database)
         } catch {
             Logger.error("Failed to load notes for indexing: \(error.localizedDescription)", category: .database)
         }

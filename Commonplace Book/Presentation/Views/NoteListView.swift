@@ -130,7 +130,10 @@ struct NoteListView_Previews: PreviewProvider {
 
     static func makeViewModelWithNotes() -> NoteListViewModel {
         let repository = InMemoryNoteRepository()
-        let viewModel = NoteListViewModel(repository: repository, metadataCollector: nil)
+        let embeddingService = EmbeddingService()
+        let searchEngine = VectorSearchEngine(embeddingService: embeddingService)
+        let noteService = NoteService(repository: repository, searchEngine: searchEngine, embeddingService: embeddingService)
+        let viewModel = NoteListViewModel(noteService: noteService, repository: repository, metadataCollector: nil)
 
         // Add test notes synchronously for preview
         Task { @MainActor in
@@ -166,12 +169,18 @@ struct NoteListView_Previews: PreviewProvider {
 
     static func makeEmptyViewModel() -> NoteListViewModel {
         let repository = InMemoryNoteRepository()
-        return NoteListViewModel(repository: repository, metadataCollector: nil)
+        let embeddingService = EmbeddingService()
+        let searchEngine = VectorSearchEngine(embeddingService: embeddingService)
+        let noteService = NoteService(repository: repository, searchEngine: searchEngine, embeddingService: embeddingService)
+        return NoteListViewModel(noteService: noteService, repository: repository, metadataCollector: nil)
     }
 
     static func makeLoadingViewModel() -> NoteListViewModel {
         let repository = InMemoryNoteRepository()
-        let viewModel = NoteListViewModel(repository: repository, metadataCollector: nil)
+        let embeddingService = EmbeddingService()
+        let searchEngine = VectorSearchEngine(embeddingService: embeddingService)
+        let noteService = NoteService(repository: repository, searchEngine: searchEngine, embeddingService: embeddingService)
+        let viewModel = NoteListViewModel(noteService: noteService, repository: repository, metadataCollector: nil)
 
         Task { @MainActor in
             await viewModel.loadNotes()

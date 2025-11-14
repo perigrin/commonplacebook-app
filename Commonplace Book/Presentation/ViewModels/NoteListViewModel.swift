@@ -16,28 +16,33 @@ class NoteListViewModel: ObservableObject {
 
     // MARK: - Private Properties
 
-    let repository: NoteRepository // Internal access for creating new notes
+    let noteService: NoteService // Internal access for creating new notes
+    let repository: NoteRepository // Internal access for NoteViewModel creation
     private let metadataCollector: MetadataCollector
     private var loadingOperations: Int = 0
 
     // MARK: - Initialization
 
-    /// Initialize view model with repository
-    /// - Parameter repository: Repository for note persistence
-    init(repository: NoteRepository, metadataCollector: MetadataCollector? = nil) {
+    /// Initialize view model with note service and repository
+    /// - Parameters:
+    ///   - noteService: Service for note persistence and search indexing
+    ///   - repository: Repository for direct note access (used by NoteViewModel)
+    ///   - metadataCollector: Optional metadata collector
+    init(noteService: NoteService, repository: NoteRepository, metadataCollector: MetadataCollector? = nil) {
+        self.noteService = noteService
         self.repository = repository
         self.metadataCollector = metadataCollector ?? MetadataCollector()
     }
 
     // MARK: - Public Methods
 
-    /// Load all notes from repository
+    /// Load all notes from note service
     func loadNotes() async {
         startLoading()
         error = nil
 
         do {
-            let loadedNotes = try await repository.list()
+            let loadedNotes = try await noteService.list()
             notes = sortNotes(loadedNotes)
             endLoading()
         } catch {
@@ -86,8 +91,8 @@ class NoteListViewModel: ObservableObject {
                 unknownFrontmatterFields: [:]
             )
 
-            // Save to repository
-            let createdNote = try await repository.create(note: newNote)
+            // Save to note service (automatically indexes for search)
+            let createdNote = try await noteService.create(note: newNote)
 
             // Add to notes array and resort to maintain sort order
             notes.append(createdNote)
@@ -102,14 +107,14 @@ class NoteListViewModel: ObservableObject {
         }
     }
 
-    /// Delete a note
+    /// Delete a note (soft delete and remove from search index)
     /// - Parameter id: UUID of note to delete
     func deleteNote(id: UUID) async {
         startLoading()
         error = nil
 
         do {
-            try await repository.delete(id: id)
+            try await noteService.delete(id: id)
 
             // Remove from notes array
             notes.removeAll { $0.id == id }

@@ -83,10 +83,10 @@ struct EnhancedNoteListView: View {
                         speechService: SpeechRecognitionService(),
                         audioMonitor: AudioLevelMonitor(),
                         metadataCollector: MetadataCollector(),
-                        repository: listViewModel.repository
+                        noteService: listViewModel.noteService
                     ),
                     manualNoteCreator: ManualNoteCreator(
-                        repository: listViewModel.repository,
+                        noteService: listViewModel.noteService,
                         metadataCollector: MetadataCollector()
                     )
                 )
@@ -634,7 +634,10 @@ struct EnhancedNoteListView_Previews: PreviewProvider {
     @MainActor
     static func makeListViewModelWithNotes() -> NoteListViewModel {
         let repository = InMemoryNoteRepository()
-        let viewModel = NoteListViewModel(repository: repository, metadataCollector: nil)
+        let embeddingService = EmbeddingService()
+        let searchEngine = VectorSearchEngine(embeddingService: embeddingService)
+        let noteService = NoteService(repository: repository, searchEngine: searchEngine, embeddingService: embeddingService)
+        let viewModel = NoteListViewModel(noteService: noteService, repository: repository, metadataCollector: nil)
 
         // Add notes synchronously for preview
         let note1 = Note(
@@ -659,14 +662,18 @@ struct EnhancedNoteListView_Previews: PreviewProvider {
     static func makeSearchViewModel() -> SearchViewModel {
         let mockEngine = MockPreviewSearchEngine()
         let repository = InMemoryNoteRepository()
-        return SearchViewModel(searchEngine: mockEngine, repository: repository)
+        let embeddingService = EmbeddingService()
+        let noteService = NoteService(repository: repository, searchEngine: mockEngine, embeddingService: embeddingService)
+        return SearchViewModel(searchEngine: mockEngine, noteService: noteService, repository: repository)
     }
 
     @MainActor
     static func makeSearchViewModelWithResults() -> SearchViewModel {
         let mockEngine = MockPreviewSearchEngine()
         let repository = InMemoryNoteRepository()
-        let viewModel = SearchViewModel(searchEngine: mockEngine, repository: repository)
+        let embeddingService = EmbeddingService()
+        let noteService = NoteService(repository: repository, searchEngine: mockEngine, embeddingService: embeddingService)
+        let viewModel = SearchViewModel(searchEngine: mockEngine, noteService: noteService, repository: repository)
 
         viewModel.query = "test"
 
@@ -677,7 +684,9 @@ struct EnhancedNoteListView_Previews: PreviewProvider {
     static func makeSearchViewModelEmpty() -> SearchViewModel {
         let mockEngine = MockPreviewSearchEngine()
         let repository = InMemoryNoteRepository()
-        let viewModel = SearchViewModel(searchEngine: mockEngine, repository: repository)
+        let embeddingService = EmbeddingService()
+        let noteService = NoteService(repository: repository, searchEngine: mockEngine, embeddingService: embeddingService)
+        let viewModel = SearchViewModel(searchEngine: mockEngine, noteService: noteService, repository: repository)
 
         viewModel.query = "nonexistent"
 
