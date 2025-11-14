@@ -31,6 +31,8 @@ enum Logger {
         case performance
         /// Embedding-related logs
         case embedding
+        /// Git-related logs
+        case git
     }
     
     /// Log levels
