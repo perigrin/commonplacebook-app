@@ -11,6 +11,8 @@ actor FileSystemNoteRepository: NoteRepository {
     private let fileManager: FileManager
     #if os(macOS)
     private var gitSyncService: GitSyncService?
+    #elseif os(iOS)
+    private var gitSyncService: GitSyncServiceiOS?
     #endif
 
     // In-memory cache for performance
@@ -34,6 +36,18 @@ actor FileSystemNoteRepository: NoteRepository {
 
     /// Set or update the git sync service
     func setGitSyncService(_ service: GitSyncService?) {
+        self.gitSyncService = service
+    }
+    #elseif os(iOS)
+    init(directory: URL, gitSyncService: GitSyncServiceiOS? = nil) {
+        self.directory = directory
+        self.formatter = NoteFileFormatter()
+        self.fileManager = FileManager.default
+        self.gitSyncService = gitSyncService
+    }
+
+    /// Set or update the git sync service
+    func setGitSyncService(_ service: GitSyncServiceiOS?) {
         self.gitSyncService = service
     }
     #else
@@ -65,7 +79,7 @@ actor FileSystemNoteRepository: NoteRepository {
         cache[note.id] = note
 
         // Trigger git commit if git sync is enabled
-        #if os(macOS)
+        #if os(macOS) || os(iOS)
         if let gitSync = gitSyncService {
             await gitSync.commitNoteChange(noteID: note.id, action: .add, title: note.title)
         }
@@ -118,7 +132,7 @@ actor FileSystemNoteRepository: NoteRepository {
         cache[note.id] = note
 
         // Trigger git commit if git sync is enabled
-        #if os(macOS)
+        #if os(macOS) || os(iOS)
         if let gitSync = gitSyncService {
             await gitSync.commitNoteChange(noteID: note.id, action: .update, title: note.title)
         }
@@ -150,7 +164,7 @@ actor FileSystemNoteRepository: NoteRepository {
         cache[id] = note
 
         // Trigger git commit if git sync is enabled
-        #if os(macOS)
+        #if os(macOS) || os(iOS)
         if let gitSync = gitSyncService {
             await gitSync.commitNoteChange(noteID: note.id, action: .delete, title: note.title)
         }
@@ -213,7 +227,7 @@ actor FileSystemNoteRepository: NoteRepository {
         cache[id] = note
 
         // Trigger git commit if git sync is enabled (treat as update)
-        #if os(macOS)
+        #if os(macOS) || os(iOS)
         if let gitSync = gitSyncService {
             await gitSync.commitNoteChange(noteID: note.id, action: .update, title: note.title)
         }
@@ -239,7 +253,7 @@ actor FileSystemNoteRepository: NoteRepository {
             try fileManager.removeItem(at: filePath)
 
             // Trigger git commit if git sync is enabled (permanent delete)
-            #if os(macOS)
+            #if os(macOS) || os(iOS)
             if let gitSync = gitSyncService {
                 await gitSync.commitNoteChange(noteID: id, action: .delete, title: "Purged: \(noteTitle)")
             }
