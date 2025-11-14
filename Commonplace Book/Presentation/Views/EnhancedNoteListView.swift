@@ -9,6 +9,7 @@ struct EnhancedNoteListView: View {
     @ObservedObject var appCoordinator: AppCoordinator
     @State private var selectedNote: Note?
     @State private var detailState: DetailPaneState = .empty
+    @State private var showingCaptureView = false
 
     /// Tracks what's displayed in the detail pane
     enum DetailPaneState: Equatable {
@@ -51,6 +52,11 @@ struct EnhancedNoteListView: View {
             .navigationTitle("Notes")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
+                    Button(action: { showingCaptureView = true }) {
+                        Label("Voice Note", systemImage: "mic.fill")
+                    }
+                }
+                ToolbarItem(placement: .primaryAction) {
                     Button(action: createNewNote) {
                         Label("New Note", systemImage: "plus")
                     }
@@ -65,6 +71,25 @@ struct EnhancedNoteListView: View {
             }
             .task {
                 await listViewModel.loadNotes()
+            }
+            .sheet(isPresented: $showingCaptureView) {
+                // Reload notes when capture view is dismissed
+                Task {
+                    await listViewModel.loadNotes()
+                }
+            } content: {
+                CaptureView(
+                    viewModel: CaptureViewModel(
+                        speechService: SpeechRecognitionService(),
+                        audioMonitor: AudioLevelMonitor(),
+                        metadataCollector: MetadataCollector(),
+                        repository: listViewModel.repository
+                    ),
+                    manualNoteCreator: ManualNoteCreator(
+                        repository: listViewModel.repository,
+                        metadataCollector: MetadataCollector()
+                    )
+                )
             }
             #if os(macOS)
             .frame(minWidth: 280, idealWidth: 320, maxWidth: 400)
