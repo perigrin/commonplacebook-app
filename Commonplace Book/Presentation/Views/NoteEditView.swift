@@ -34,16 +34,21 @@ struct NoteEditView: View {
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
+        .background(Theme.Colors.detailBackground)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
-                Button("Cancel") {
+                Button(action: {
                     onCancel?()
                     dismiss()
+                }) {
+                    Label("Cancel", systemImage: "xmark")
+                        .labelStyle(.iconOnly)
                 }
+                .foregroundColor(Theme.Colors.secondaryText)
             }
 
             ToolbarItem(placement: .confirmationAction) {
-                Button("Save") {
+                Button(action: {
                     Task {
                         await viewModel.save()
                         if viewModel.error == nil {
@@ -51,7 +56,11 @@ struct NoteEditView: View {
                             dismiss()
                         }
                     }
+                }) {
+                    Label("Save", systemImage: "checkmark")
+                        .labelStyle(.iconOnly)
                 }
+                .foregroundColor(Theme.Colors.accent)
                 .disabled(viewModel.isLoading)
             }
         }
@@ -64,7 +73,7 @@ struct NoteEditView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Title")
                         .font(.headline)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(Theme.Colors.secondaryText)
 
                     TextField("Note title", text: Binding(
                         get: { viewModel.title },
@@ -72,35 +81,39 @@ struct NoteEditView: View {
                     ))
                     .textFieldStyle(.roundedBorder)
                     .font(.title3)
+                    .foregroundColor(Theme.Colors.primaryText)
                 }
 
                 Divider()
+                    .background(Theme.Colors.separator)
 
                 // Content field (raw markdown)
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Content")
                         .font(.headline)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(Theme.Colors.secondaryText)
 
                     Text("Raw markdown editor")
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(Theme.Colors.secondaryText)
 
                     TextEditor(text: Binding(
                         get: { viewModel.content },
                         set: { viewModel.updateContent($0) }
                     ))
                     .font(.body)
+                    .foregroundColor(Theme.Colors.primaryText)
                     .frame(minHeight: 300)
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+                            .stroke(Theme.Colors.separator, lineWidth: 1)
                     )
                 }
 
                 // Metadata section (read-only)
                 if !viewModel.device.isEmpty {
                     Divider()
+                        .background(Theme.Colors.separator)
 
                     metadataSection
                 }
@@ -109,43 +122,44 @@ struct NoteEditView: View {
             }
             .padding()
         }
+        .background(Theme.Colors.detailBackground)
     }
 
     private var metadataSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Metadata")
                 .font(.headline)
-                .foregroundColor(.secondary)
+                .foregroundColor(Theme.Colors.secondaryText)
 
             // Date
             HStack(spacing: 8) {
                 Image(systemName: "calendar")
-                    .foregroundColor(.secondary)
+                    .foregroundColor(Theme.Colors.secondaryText)
                     .frame(width: 20)
                 Text(formattedDate)
                     .font(.subheadline)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(Theme.Colors.secondaryText)
             }
 
             // Device
             HStack(spacing: 8) {
                 Image(systemName: "iphone")
-                    .foregroundColor(.secondary)
+                    .foregroundColor(Theme.Colors.secondaryText)
                     .frame(width: 20)
                 Text(viewModel.device)
                     .font(.subheadline)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(Theme.Colors.secondaryText)
             }
 
             // Location (if available)
             if let location = viewModel.location {
                 HStack(spacing: 8) {
                     Image(systemName: "location.fill")
-                        .foregroundColor(.secondary)
+                        .foregroundColor(Theme.Colors.secondaryText)
                         .frame(width: 20)
                     Text(formattedLocation(location))
                         .font(.subheadline)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(Theme.Colors.secondaryText)
                 }
             }
         }
@@ -167,18 +181,18 @@ struct NoteEditView: View {
 
     private var loadingOverlay: some View {
         ZStack {
-            Color.black.opacity(0.3)
+            Theme.Colors.jet.opacity(0.6)
                 .ignoresSafeArea()
 
             VStack(spacing: 16) {
                 ProgressView()
-                    .tint(.white)
+                    .tint(Theme.Colors.accent)
                 Text("Saving...")
                     .font(.subheadline)
-                    .foregroundColor(.white)
+                    .foregroundColor(Theme.Colors.primaryText)
             }
             .padding(24)
-            .background(Color.secondary)
+            .background(Theme.Colors.spaceCadet)
             .cornerRadius(12)
         }
     }

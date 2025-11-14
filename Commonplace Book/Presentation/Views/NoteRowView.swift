@@ -22,28 +22,29 @@ struct NoteRowView: View {
         VStack(alignment: .leading, spacing: 6) {
             // Title (bold)
             Text(note.title)
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundColor(.primary)
+                .font(Theme.Typography.noteTitle)
+                .foregroundColor(Theme.Colors.primaryText)
                 .lineLimit(1)
 
             // Preview text (gray, smaller, truncated to 100 chars)
             if !note.content.isEmpty {
                 Text(previewText)
-                    .font(.system(size: 13))
-                    .foregroundColor(.secondary)
+                    .font(Theme.Typography.notePreview)
+                    .foregroundColor(Theme.Colors.secondaryText)
                     .lineLimit(2)
-                    .opacity(0.8)
             }
 
             // Relative date
             Text(relativeDate)
-                .font(.system(size: 11))
-                .foregroundColor(.secondary)
-                .opacity(0.6)
+                .font(Theme.Typography.noteDate)
+                .foregroundColor(Theme.Colors.secondaryText)
+                .opacity(0.7)
         }
         .padding(.vertical, 8)
         .padding(.horizontal, 4)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.Colors.noteRowBackground)
+        .cornerRadius(Theme.CornerRadius.small)
     }
 
     private var previewText: String {

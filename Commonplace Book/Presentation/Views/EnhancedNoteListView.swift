@@ -6,6 +6,7 @@ import SwiftUI
 struct EnhancedNoteListView: View {
     @ObservedObject var listViewModel: NoteListViewModel
     @ObservedObject var searchViewModel: SearchViewModel
+    @ObservedObject var appCoordinator: AppCoordinator
     @State private var selectedNote: Note?
     @State private var detailState: DetailPaneState = .empty
 
@@ -39,20 +40,12 @@ struct EnhancedNoteListView: View {
 
     var body: some View {
         NavigationSplitView {
-            // Sidebar: Note list
-            VStack(spacing: 0) {
-                // Search bar at top
-                SearchBar(query: $searchViewModel.query)
-                    .padding(.top, 8)
-                    .padding(.bottom, 4)
-
-                // Content area
-                ZStack {
-                    if isSearchMode {
-                        searchModeContent
-                    } else {
-                        defaultModeContent
-                    }
+            // Sidebar: Note list with search at bottom
+            ZStack {
+                if isSearchMode {
+                    searchModeContent
+                } else {
+                    defaultModeContent
                 }
             }
             .navigationTitle("Notes")
@@ -62,6 +55,13 @@ struct EnhancedNoteListView: View {
                         Label("New Note", systemImage: "plus")
                     }
                 }
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                // Search bar fixed at bottom
+                SearchBar(query: $searchViewModel.query)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 8)
+                    .background(Theme.Colors.searchBarBackground)
             }
             .task {
                 await listViewModel.loadNotes()
@@ -129,11 +129,13 @@ struct EnhancedNoteListView: View {
         VStack(spacing: 16) {
             Image(systemName: "note.text")
                 .font(.system(size: 64))
-                .foregroundColor(.secondary)
+                .foregroundColor(Theme.Colors.secondaryText)
             Text("Select a note")
                 .font(.title2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Colors.secondaryText)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Theme.Colors.detailBackground)
     }
 
     private func noteDetailPane(note: Note) -> some View {
@@ -141,23 +143,30 @@ struct EnhancedNoteListView: View {
             VStack(alignment: .leading, spacing: 20) {
                 // Title
                 Text(note.title)
-                    .font(.title)
+                    .font(Theme.Typography.detailTitle)
                     .fontWeight(.bold)
+                    .foregroundColor(Theme.Colors.primaryText)
 
                 // Content
                 Text(contentWithoutTitle(note: note))
-                    .font(.body)
+                    .font(Theme.Typography.detailBody)
+                    .foregroundColor(Theme.Colors.primaryText)
                     .textSelection(.enabled)
 
                 Spacer()
             }
             .padding()
         }
+        .background(Theme.Colors.detailBackground)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button("Edit") {
+                Button(action: {
                     openEditView(for: note)
+                }) {
+                    Label("Edit", systemImage: "pencil")
+                        .labelStyle(.iconOnly)
                 }
+                .foregroundColor(Theme.Colors.accent)
             }
         }
     }
@@ -165,6 +174,9 @@ struct EnhancedNoteListView: View {
     private func noteEditPane(viewModel: NoteViewModel, isNew: Bool) -> some View {
         NoteEditView(viewModel: viewModel, onSave: {
             Task {
+                // Index the note in the search engine
+                await appCoordinator.indexNote(id: viewModel.id)
+
                 await listViewModel.loadNotes()
                 // Return to viewing the saved note
                 if let savedNote = try? await listViewModel.repository.read(id: viewModel.id) {
@@ -231,6 +243,7 @@ struct EnhancedNoteListView: View {
                 .buttonStyle(.plain)
                 .listRowInsets(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 8))
                 .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
                 .tag(note)
             }
 
@@ -238,14 +251,17 @@ struct EnhancedNoteListView: View {
                 HStack {
                     Spacer()
                     ProgressView()
+                        .tint(Theme.Colors.accent)
                     Spacer()
                 }
                 .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
             }
         }
         .listStyle(.plain)
         .scrollDismissesKeyboard(.immediately)
         .scrollContentBackground(.hidden)
+        .background(Theme.Colors.noteListBackground)
         .refreshable {
             // Clear search when refreshing
             searchViewModel.clear()
@@ -271,19 +287,22 @@ struct EnhancedNoteListView: View {
         VStack(spacing: 16) {
             Image(systemName: "note.text")
                 .font(.system(size: 64))
-                .foregroundColor(.secondary)
+                .foregroundColor(Theme.Colors.secondaryText)
                 .accessibilityLabel("No notes icon")
 
             Text("No Notes Yet")
                 .font(.title2)
                 .fontWeight(.semibold)
+                .foregroundColor(Theme.Colors.primaryText)
 
             Text("Pull down to refresh")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Colors.secondaryText)
                 .multilineTextAlignment(.center)
         }
         .padding()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Theme.Colors.noteListBackground)
     }
 
     // MARK: - Search Mode Content
@@ -312,30 +331,35 @@ struct EnhancedNoteListView: View {
         VStack(spacing: 16) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 64))
-                .foregroundColor(.secondary)
+                .foregroundColor(Theme.Colors.secondaryText)
                 .accessibilityLabel("No results icon")
 
             Text("No Results Found")
                 .font(.title2)
                 .fontWeight(.semibold)
+                .foregroundColor(Theme.Colors.primaryText)
 
             Text("Try a different search query")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Colors.secondaryText)
                 .multilineTextAlignment(.center)
         }
         .padding()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Theme.Colors.noteListBackground)
     }
 
     private var searchLoadingView: some View {
         VStack(spacing: 16) {
             ProgressView()
+                .tint(Theme.Colors.accent)
                 .accessibilityLabel("Searching")
             Text("Searching...")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Colors.secondaryText)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Theme.Colors.noteListBackground)
     }
 
     // MARK: - Shared Views
@@ -343,11 +367,14 @@ struct EnhancedNoteListView: View {
     private var loadingView: some View {
         VStack(spacing: 16) {
             ProgressView()
+                .tint(Theme.Colors.accent)
                 .accessibilityLabel("Loading notes")
             Text("Loading notes...")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.Colors.secondaryText)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Theme.Colors.noteListBackground)
     }
 
     private func errorView(error: Error, onDismiss: @escaping () -> Void) -> some View {
@@ -396,12 +423,14 @@ struct SearchResultsListView: View {
                 .buttonStyle(.plain)
                 .listRowInsets(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 8))
                 .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
                 .tag(note)
             }
         }
         .listStyle(.plain)
         .scrollDismissesKeyboard(.immediately)
         .scrollContentBackground(.hidden)
+        .background(Theme.Colors.noteListBackground)
         .onChange(of: searchViewModel.results) { _, newResults in
             // Cancel previous load task
             loadTask?.cancel()
@@ -500,36 +529,36 @@ struct SearchResultRowView: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text(note.title)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(.primary)
+                    .font(Theme.Typography.noteTitle)
+                    .foregroundColor(Theme.Colors.primaryText)
                     .accessibilityLabel("Note title: \(note.title)")
 
                 Spacer()
 
                 // Relevance indicator
                 Text("\(Int(relevance * 100))%")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .opacity(0.6)
+                    .font(Theme.Typography.noteDate)
+                    .foregroundStyle(Theme.Colors.accent)
                     .accessibilityLabel("Relevance: \(Int(relevance * 100)) percent")
             }
 
             Text(previewText)
-                .font(.system(size: 13))
-                .foregroundStyle(.secondary)
-                .opacity(0.8)
+                .font(Theme.Typography.notePreview)
+                .foregroundStyle(Theme.Colors.secondaryText)
                 .lineLimit(2)
                 .accessibilityLabel("Note content: \(previewText)")
 
             Text(note.created, style: .relative)
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .opacity(0.6)
+                .font(Theme.Typography.noteDate)
+                .foregroundStyle(Theme.Colors.secondaryText)
+                .opacity(0.7)
                 .accessibilityLabel("Created \(note.created, style: .relative)")
         }
         .padding(.vertical, 8)
         .padding(.horizontal, 4)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.Colors.noteRowBackground)
+        .cornerRadius(Theme.CornerRadius.small)
     }
 
     private var previewText: String {
@@ -549,24 +578,32 @@ struct EnhancedNoteListView_Previews: PreviewProvider {
             // Default mode with notes
             EnhancedNoteListView(
                 listViewModel: makeListViewModelWithNotes(),
-                searchViewModel: makeSearchViewModel()
+                searchViewModel: makeSearchViewModel(),
+                appCoordinator: makeAppCoordinator()
             )
             .previewDisplayName("Default Mode")
 
             // Search mode with results
             EnhancedNoteListView(
                 listViewModel: makeListViewModelWithNotes(),
-                searchViewModel: makeSearchViewModelWithResults()
+                searchViewModel: makeSearchViewModelWithResults(),
+                appCoordinator: makeAppCoordinator()
             )
             .previewDisplayName("Search Mode")
 
             // Empty search results
             EnhancedNoteListView(
                 listViewModel: makeListViewModelWithNotes(),
-                searchViewModel: makeSearchViewModelEmpty()
+                searchViewModel: makeSearchViewModelEmpty(),
+                appCoordinator: makeAppCoordinator()
             )
             .previewDisplayName("No Results")
         }
+    }
+
+    @MainActor
+    static func makeAppCoordinator() -> AppCoordinator {
+        return AppCoordinator()
     }
 
     @MainActor

@@ -11,7 +11,7 @@ struct SearchBar: View {
         HStack(spacing: 8) {
             // Search icon
             Image(systemName: "magnifyingglass")
-                .foregroundColor(.gray)
+                .foregroundColor(Theme.Colors.secondaryText)
                 .font(.system(size: 16))
                 .accessibilityHidden(true)
 
@@ -19,6 +19,7 @@ struct SearchBar: View {
             TextField("Search notes...", text: $query)
                 .focused($isFocused)
                 .textFieldStyle(.plain)
+                .foregroundColor(Theme.Colors.primaryText)
                 .disableAutocorrection(true)
                 .accessibilityLabel("Search notes")
                 .accessibilityHint("Enter text to search for notes")
@@ -30,7 +31,7 @@ struct SearchBar: View {
                     isFocused = false
                 }) {
                     Image(systemName: "xmark.circle.fill")
-                        .foregroundColor(.gray)
+                        .foregroundColor(Theme.Colors.accent)
                         .font(.system(size: 16))
                 }
                 .buttonStyle(.plain)
@@ -40,7 +41,7 @@ struct SearchBar: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .background(Color.gray.opacity(0.15))
+        .background(Theme.Colors.secondaryBackground)
         .cornerRadius(10)
         .padding(.horizontal)
     }
