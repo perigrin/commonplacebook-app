@@ -293,7 +293,7 @@ actor GitSyncService {
     func initializeRepository() async throws {
         #if os(macOS)
         // Initialize git repository if needed
-        if !await gitService.isGitRepository(at: repositoryPath) {
+        if !(await gitService.isGitRepository(at: repositoryPath)) {
             try await gitService.initRepository(
                 at: repositoryPath,
                 userName: configuration.userName,
