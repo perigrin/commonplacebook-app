@@ -15,6 +15,8 @@ struct SettingsView: View {
     @State private var showingAbout = false
     #if os(macOS)
     @State private var showingGitSetup = false
+    #elseif os(iOS)
+    @State private var showingGitSetup = false
     #endif
 
     var body: some View {
@@ -23,8 +25,11 @@ struct SettingsView: View {
             privacySecuritySection
 
             #if os(macOS)
-            // Git Integration Section (macOS only)
+            // Git Integration Section (macOS)
             gitIntegrationSection
+            #elseif os(iOS)
+            // Git Integration Section (iOS)
+            gitIntegrationSectioniOS
             #endif
 
             // Search Settings Section
@@ -52,6 +57,10 @@ struct SettingsView: View {
             NavigationStack {
                 GitSetupView()
             }
+        }
+        #elseif os(iOS)
+        .sheet(isPresented: $showingGitSetup) {
+            GitSetupViewiOS()
         }
         #endif
     }
@@ -131,7 +140,34 @@ struct SettingsView: View {
         } header: {
             Text("Git Integration")
         } footer: {
-            Text("Configure automatic git synchronization for your notes. Currently supported on macOS only.")
+            Text("Configure automatic git synchronization for your notes. Syncs via local git commands.")
+        }
+    }
+    #endif
+
+    #if os(iOS)
+    private var gitIntegrationSectioniOS: some View {
+        Section {
+            // Setup/Configuration button
+            Button {
+                showingGitSetup = true
+            } label: {
+                HStack {
+                    Image(systemName: "arrow.triangle.branch")
+                        .foregroundColor(.accentColor)
+                    Text("Git Synchronization Setup")
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+            .foregroundColor(.primary)
+
+        } header: {
+            Text("Git Integration")
+        } footer: {
+            Text("Sync your notes via Working Copy app. Working Copy must be installed to use this feature.")
         }
     }
     #endif

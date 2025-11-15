@@ -2,7 +2,7 @@
 
 ## Overview
 
-Phase 5 Git integration is currently implemented for **macOS only**. iOS support will be added in a future phase using Working Copy app for git operations.
+Phase 5 Git integration is now implemented for both **macOS and iOS**. iOS uses the Working Copy app for git operations via x-callback-url protocol.
 
 ## Current Implementation (macOS)
 
@@ -258,12 +258,200 @@ struct WorkingCopyConfiguration {
 #endif
 ```
 
+## Implementation Status
+
+### Phase 5 - macOS Git Integration ✅ COMPLETE
+- SSHKeyService for key generation and keychain storage
+- GitService for git operations (init, clone, commit, push, pull)
+- GitSyncService for automatic synchronization
+- GitSetupView wizard
+- Full test coverage (46 tests)
+
+### Phase 5b - iOS Git Integration ✅ COMPLETE
+
+**Services Implemented:**
+
+1. **WorkingCopyService** (`Commonplace Book/Core/Services/WorkingCopyService.swift`)
+   - x-callback-url protocol support
+   - URL generation for commit, push, pull, clone, status
+   - Callback handling with async/await
+   - Working Copy detection via canOpenURL
+   - Timeout and error handling
+
+2. **GitSyncServiceiOS** (`Commonplace Book/Core/Services/GitSyncServiceiOS.swift`)
+   - Matches macOS GitSyncService API exactly
+   - Auto-commit with batching (5-second window)
+   - Background push (low priority)
+   - Periodic pull (configurable interval)
+   - Event handlers for sync status
+   - Uses WorkingCopyService instead of GitService
+
+3. **FileSystemNoteRepository Updates**
+   - Platform-specific git sync service support
+   - iOS and macOS use identical API calls
+   - Conditional compilation for service types
+   - Git commits triggered on create, update, delete, restore, purge
+
+**UI Components:**
+
+1. **GitSetupViewiOS** (`Commonplace Book/Presentation/Views/GitSetupViewiOS.swift`)
+   - 6-step wizard:
+     1. Welcome
+     2. Install/Detect Working Copy
+     3. Configure Repository (URL, name)
+     4. Clone Repository in Working Copy
+     5. Test Connection
+     6. Complete
+   - Auto-extraction of repository name from URL
+   - App Store link for Working Copy
+   - Repository URL validation
+   - Configuration persistence
+
+2. **SettingsView Updates**
+   - iOS git integration section
+   - Platform-specific messaging
+   - Sheet presentation for GitSetupViewiOS
+
+**URL Scheme Integration:**
+
+1. **App URL Handling** (`Commonplace Book/App/Commonplace_BookApp.swift`)
+   - `onOpenURL` handler for iOS
+   - Working Copy callback processing
+   - Event logging for debugging
+
+2. **URL Scheme Configuration** (`IOS_URL_SCHEME_SETUP.md`)
+   - `commonplacebook://` URL scheme
+   - Xcode setup instructions
+   - Testing procedures
+   - Troubleshooting guide
+
+**Test Coverage:**
+
+1. **WorkingCopyServiceTests** - 8 tests
+   - URL generation validation
+   - Working Copy detection
+   - Callback URL formatting
+
+2. **GitSyncServiceiOSTests** - 10 tests
+   - Configuration management
+   - Auto-commit behavior
+   - Push/pull operations
+   - Timer management
+   - Repository setup
+
+3. **GitSetupViewiOSTests** - 5 tests
+   - Wizard step navigation
+   - Repository URL validation
+   - Repository name extraction
+   - Step progression logic
+
+4. **GitIntegrationiOSTests** - 9 tests
+   - Note create/update/delete workflows
+   - Git commit triggers
+   - Configuration effects
+   - Graceful degradation without Working Copy
+   - Event handler integration
+
+**Total iOS Tests: 32 tests** (exceeds requirement of 29+)
+
+## User-Facing Setup Instructions
+
+### For iOS Users
+
+1. **Install Working Copy**
+   - Download from App Store (free version works for cloning)
+   - Working Copy Pro required for push operations
+
+2. **Set Up Repository in Working Copy**
+   - Create or clone your notes repository
+   - Configure SSH keys in Working Copy settings
+   - Note the repository name (used for URL scheme)
+
+3. **Configure Commonplace Book**
+   - Open Settings → Git Integration
+   - Tap "Git Synchronization Setup"
+   - Follow wizard to configure repository
+   - Enter repository URL (SSH or HTTPS)
+   - Enter repository name (must match Working Copy)
+   - Test connection
+
+4. **Enable Automatic Sync**
+   - Auto-commit enabled by default
+   - Background push happens after commits
+   - Periodic pull checks for remote changes
+
+### URL Scheme Configuration
+
+**Required for Xcode Project:**
+
+Add to Info.plist via Xcode:
+```
+URL Types → Add New
+- Identifier: com.commonplacebook.url-scheme
+- URL Schemes: commonplacebook
+- Role: Editor
+```
+
+See `IOS_URL_SCHEME_SETUP.md` for detailed instructions.
+
+## Troubleshooting
+
+### iOS-Specific Issues
+
+**Working Copy not opening:**
+- Verify Working Copy is installed
+- Check repository name matches exactly
+- Test Working Copy directly with a URL scheme
+
+**Callbacks not working:**
+- Verify URL scheme is registered in Xcode
+- Check console logs for "Received URL" messages
+- Ensure Working Copy is using correct callback URLs
+
+**Commits not syncing:**
+- Check Working Copy permissions
+- Verify repository is configured correctly
+- Check Working Copy status manually
+- Review event logs in Commonplace Book
+
+**Performance:**
+- Commits are batched over 5 seconds to reduce app switching
+- Background operations use low priority
+- Pull timer is configurable (default 5 minutes)
+
+## Architecture Comparison
+
+### macOS Architecture
+```
+FileSystemNoteRepository
+    └── GitSyncService
+        └── GitService (shell commands)
+            └── SSHKeyService (keychain)
+```
+
+### iOS Architecture
+```
+FileSystemNoteRepository
+    └── GitSyncServiceiOS
+        └── WorkingCopyService (x-callback-url)
+            └── Working Copy App
+```
+
+Both platforms:
+- Share GitSyncConfiguration struct
+- Use identical GitSyncEvent enum
+- Expose same public API
+- Support same git operations
+
 ## Conclusion
 
-This phased approach allows us to:
-1. ✅ Ship macOS git integration now
-2. 🔄 Add iOS support later without breaking changes
-3. 🎯 Use best-in-class tools for each platform
-4. 🔒 Maintain data compatibility across platforms
+Phase 5b successfully implements iOS git integration:
+1. ✅ macOS git integration via shell commands
+2. ✅ iOS git integration via Working Copy
+3. ✅ Platform-specific implementations with shared API
+4. ✅ Comprehensive test coverage (78 total tests)
+5. ✅ User-friendly setup wizards for both platforms
+6. ✅ Graceful degradation without git/Working Copy
+7. ✅ Full documentation and troubleshooting guides
 
-The Working Copy approach leverages existing, proven iOS git infrastructure rather than attempting to port unmaintained Swift git libraries or implement git operations from scratch on iOS.
+The Working Copy approach leverages existing, proven iOS git infrastructure rather than attempting to port unmaintained Swift git libraries or implement git operations from scratch on iOS. Both platforms can sync to the same git repository, enabling true cross-platform note synchronization.

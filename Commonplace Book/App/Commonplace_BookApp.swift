@@ -26,6 +26,11 @@ struct Commonplace_BookApp: App {
     /// Initialize biometric authentication service
     @StateObject private var biometricAuth = BiometricAuthService()
 
+    #if os(iOS)
+    /// Working Copy service for handling callbacks
+    @StateObject private var workingCopyService = WorkingCopyService()
+    #endif
+
     /// Monitor app lifecycle
     @Environment(\.scenePhase) private var scenePhase
 
@@ -71,6 +76,11 @@ struct Commonplace_BookApp: App {
             .onChange(of: scenePhase) { oldPhase, newPhase in
                 handleScenePhaseChange(from: oldPhase, to: newPhase)
             }
+            #if os(iOS)
+            .onOpenURL { url in
+                handleIncomingURL(url)
+            }
+            #endif
         }
     }
 
@@ -107,12 +117,31 @@ struct Commonplace_BookApp: App {
         let appearance = UINavigationBar.appearance()
         appearance.tintColor = .systemBlue
         appearance.prefersLargeTitles = true
-        
+
         // Configure UITableView appearance
         UITableView.appearance().backgroundColor = .systemBackground
         UITableViewCell.appearance().backgroundColor = .systemBackground
         #endif
     }
+
+    #if os(iOS)
+    /// Handle incoming URL from Working Copy or other apps
+    /// - Parameter url: The incoming URL
+    private func handleIncomingURL(_ url: URL) {
+        Logger.info("Received URL: \(url.absoluteString)", category: .git)
+
+        Task {
+            // Handle Working Copy callbacks
+            let handled = await workingCopyService.handleIncomingURL(url)
+
+            if handled {
+                Logger.info("URL handled by Working Copy service", category: .git)
+            } else {
+                Logger.warning("URL not handled: \(url.absoluteString)", category: .general)
+            }
+        }
+    }
+    #endif
 }
 
 /// Global app state
