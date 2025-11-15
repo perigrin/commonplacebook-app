@@ -31,7 +31,8 @@ enum WorkingCopyServiceError: Error, LocalizedError {
 }
 
 /// Service for integrating with Working Copy app via x-callback-url
-actor WorkingCopyService {
+@MainActor
+class WorkingCopyService: ObservableObject {
     private static let workingCopyScheme = "working-copy"
     private static let appCallbackScheme = "commonplacebook"
     private static let callbackTimeout: TimeInterval = 30.0
