@@ -19,7 +19,7 @@ actor GitSyncServiceiOS {
     private let commitBatchInterval: TimeInterval = 5.0 // Batch commits over 5 seconds
 
     init(
-        workingCopyService: WorkingCopyService = WorkingCopyService(),
+        workingCopyService: WorkingCopyService,
         repositoryPath: URL,
         configuration: GitSyncConfiguration = GitSyncConfiguration()
     ) {
