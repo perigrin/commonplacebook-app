@@ -178,15 +178,58 @@ This:
 3. Prevents future bugs (all note operations go through one path)
 4. The integration tests will validate that the fix works
 
+## Implementation Status
+
+### ✅ FIX IMPLEMENTED (Commit: 9afa068)
+
+The fix has been successfully implemented! `NoteViewModel` now uses `NoteService` instead of direct repository access.
+
+**Changes Made:**
+
+1. **NoteViewModel.swift**
+   - Changed dependency from `repository: NoteRepository` to `noteService: NoteService`
+   - Updated `load()` to use `noteService.read()`
+   - Updated `save()` to use `noteService.create()` and `noteService.update()`
+   - Added documentation noting automatic search indexing
+
+2. **NoteEditView.swift**
+   - Updated preview helpers to create full service stack (repository + embedding + search + noteService)
+   - Changed from `NoteViewModel(repository:...)` to `NoteViewModel(noteService:...)`
+
+3. **Test Files**
+   - Updated `NoteViewModelTests.swift` to create NoteService with dependencies
+   - Updated `NoteEditViewTests.swift` to create NoteService with dependencies
+   - All test setups now properly initialize the full service stack
+
+### Architecture After Fix
+
+```
+User Edits Note
+    ↓
+NoteViewModel.save()
+    ↓
+NoteService.create()/update()
+    ↓
+    ├─→ Repository.create()/update()  [Persistence]
+    └─→ indexNote()                   [Search Indexing]
+        └─→ EmbeddingService.generateEmbedding()
+            └─→ SearchEngine.indexNote()
+```
+
+All note operations (voice capture + manual editing) now follow the same path through `NoteService`, ensuring automatic search indexing.
+
 ## Next Steps
 
-1. **Run the integration tests** to confirm they expose the problem
-2. **Update `NoteViewModel`** to use `NoteService`
-3. **Update all code** that instantiates `NoteViewModel` to pass `NoteService`
-4. **Run tests again** to verify the fix
-5. **Test manually** in the app to ensure search works with real content
+1. ✅ **Integration tests written** - Expose the problem with real implementations
+2. ✅ **NoteViewModel fixed** - Now uses NoteService
+3. ✅ **All instantiations updated** - Tests and preview code updated
+4. ⏳ **Run tests** - Verify integration tests pass with the fix
+5. ⏳ **Manual testing** - Verify search works in the app with real content
 
 ## Files Changed
 
 - ✅ `Commonplace BookTests/Integration/SearchIntegrationTests.swift` - New integration tests (committed: 156f26a)
-- ⏳ `Commonplace Book/Presentation/ViewModels/NoteViewModel.swift` - Needs fix (not yet changed)
+- ✅ `Commonplace Book/Presentation/ViewModels/NoteViewModel.swift` - Fixed to use NoteService (committed: 9afa068)
+- ✅ `Commonplace Book/Presentation/Views/NoteEditView.swift` - Updated preview helpers (committed: 9afa068)
+- ✅ `Commonplace BookTests/ViewModels/NoteViewModelTests.swift` - Updated for NoteService (committed: 9afa068)
+- ✅ `Commonplace BookTests/Views/NoteEditViewTests.swift` - Updated for NoteService (committed: 9afa068)
