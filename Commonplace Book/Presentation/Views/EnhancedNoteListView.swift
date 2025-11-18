@@ -110,8 +110,8 @@ struct EnhancedNoteListView: View {
             // Create new note ID
             let newNoteId = UUID()
 
-            // Create view model for new note
-            let viewModel = NoteViewModel(repository: listViewModel.repository, noteId: newNoteId)
+            // Create view model for new note using noteService from listViewModel
+            let viewModel = NoteViewModel(noteService: listViewModel.noteService, noteId: newNoteId)
 
             // Collect initial metadata
             let metadataCollector = MetadataCollector()
@@ -224,7 +224,7 @@ struct EnhancedNoteListView: View {
 
     private func openEditView(for note: Note) {
         Task {
-            let viewModel = NoteViewModel(repository: listViewModel.repository, noteId: note.id)
+            let viewModel = NoteViewModel(noteService: listViewModel.noteService, noteId: note.id)
             await viewModel.load()
 
             await MainActor.run {

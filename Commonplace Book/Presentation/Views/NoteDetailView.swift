@@ -5,7 +5,7 @@ import SwiftUI
 
 struct NoteDetailView: View {
     let note: Note
-    var repository: NoteRepository?
+    var noteService: NoteService?
     @State private var showingEdit = false
     @State private var editViewModel: NoteViewModel?
 
@@ -49,17 +49,27 @@ struct NoteDetailView: View {
     }
 
     private func openEditView() {
-        // Use provided repository or fallback to in-memory for preview
-        let repo = repository ?? InMemoryNoteRepository()
-
         Task {
-            // If using fallback repository, load the note into it
-            if repository == nil {
-                _ = try? await repo.create(note: note)
+            // Use provided noteService or create fallback for preview
+            let service: NoteService
+            if let noteService = noteService {
+                service = noteService
+            } else {
+                // Create fallback service stack for preview
+                let repo = InMemoryNoteRepository()
+                let embeddingService = EmbeddingService()
+                let searchEngine = VectorSearchEngine(embeddingService: embeddingService)
+                service = NoteService(
+                    repository: repo,
+                    searchEngine: searchEngine,
+                    embeddingService: embeddingService
+                )
+                // Load note into fallback repository
+                _ = try? await service.create(note: note)
             }
 
             // Create view model
-            let viewModel = NoteViewModel(repository: repo, noteId: note.id)
+            let viewModel = NoteViewModel(noteService: service, noteId: note.id)
             await viewModel.load()
 
             await MainActor.run {

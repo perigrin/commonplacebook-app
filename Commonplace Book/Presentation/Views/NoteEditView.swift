@@ -310,9 +310,18 @@ struct NoteEditView_Previews: PreviewProvider {
 
     @MainActor
     static func makeViewModelWithError() -> NoteViewModel {
+        // Create dependencies
         let repository = InMemoryNoteRepository()
+        let embeddingService = EmbeddingService()
+        let searchEngine = VectorSearchEngine(embeddingService: embeddingService)
+        let noteService = NoteService(
+            repository: repository,
+            searchEngine: searchEngine,
+            embeddingService: embeddingService
+        )
+
         let noteId = UUID()
-        let viewModel = NoteViewModel(repository: repository, noteId: noteId)
+        let viewModel = NoteViewModel(noteService: noteService, noteId: noteId)
 
         viewModel.updateTitle("")
         viewModel.updateContent("Some content")
