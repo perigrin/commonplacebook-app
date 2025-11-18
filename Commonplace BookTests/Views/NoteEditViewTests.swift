@@ -12,13 +12,25 @@ extension NoteEditView: Inspectable {}
 final class NoteEditViewTests: XCTestCase {
 
     var repository: InMemoryNoteRepository!
+    var embeddingService: EmbeddingService!
+    var searchEngine: VectorSearchEngine!
+    var noteService: NoteService!
     var testNote: Note!
     var viewModel: NoteViewModel!
 
     override func setUp() async throws {
         try await super.setUp()
 
+        // Create dependencies
         repository = InMemoryNoteRepository()
+        embeddingService = EmbeddingService()
+        try await embeddingService.loadModel()
+        searchEngine = VectorSearchEngine(embeddingService: embeddingService)
+        noteService = NoteService(
+            repository: repository,
+            searchEngine: searchEngine,
+            embeddingService: embeddingService
+        )
 
         // Create a test note
         testNote = Note(
@@ -32,16 +44,19 @@ final class NoteEditViewTests: XCTestCase {
             unknownFrontmatterFields: [:]
         )
 
-        // Add test note to repository
-        _ = try await repository.create(note: testNote)
+        // Add test note through note service (automatic indexing)
+        _ = try await noteService.create(note: testNote)
 
         // Create view model
-        viewModel = NoteViewModel(repository: repository, noteId: testNote.id)
+        viewModel = NoteViewModel(noteService: noteService, noteId: testNote.id)
         await viewModel.load()
     }
 
     override func tearDown() async throws {
         viewModel = nil
+        noteService = nil
+        searchEngine = nil
+        embeddingService = nil
         repository = nil
         testNote = nil
         try await super.tearDown()
@@ -122,7 +137,7 @@ final class NoteEditViewTests: XCTestCase {
 
     func testNavigationTitleForNewNote() throws {
         // Given
-        let newViewModel = NoteViewModel(repository: repository, noteId: UUID())
+        let newViewModel = NoteViewModel(noteService: noteService, noteId: UUID())
         newViewModel.updateTitle("")
         let view = NoteEditView(viewModel: newViewModel)
 
@@ -190,7 +205,7 @@ final class NoteEditViewTests: XCTestCase {
 
     func testMetadataSectionHidesWhenDeviceEmpty() throws {
         // Given
-        let newViewModel = NoteViewModel(repository: repository, noteId: UUID())
+        let newViewModel = NoteViewModel(noteService: noteService, noteId: UUID())
         newViewModel.device = ""
         let view = NoteEditView(viewModel: newViewModel)
 

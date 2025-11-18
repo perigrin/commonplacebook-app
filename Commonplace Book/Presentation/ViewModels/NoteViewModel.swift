@@ -23,31 +23,31 @@ class NoteViewModel: ObservableObject {
 
     // MARK: - Private Properties
 
-    private let repository: NoteRepository
+    private let noteService: NoteService
     private let noteId: UUID
     private var isNewNote: Bool = true
 
     // MARK: - Initialization
 
-    /// Initialize view model with repository and note ID
+    /// Initialize view model with note service and note ID
     /// - Parameters:
-    ///   - repository: Repository for note persistence
+    ///   - noteService: Service for note operations with automatic search indexing
     ///   - noteId: ID of the note to display/edit
-    init(repository: NoteRepository, noteId: UUID) {
-        self.repository = repository
+    init(noteService: NoteService, noteId: UUID) {
+        self.noteService = noteService
         self.noteId = noteId
         self.id = noteId
     }
 
     // MARK: - Public Methods
 
-    /// Load note from repository
+    /// Load note from note service
     func load() async {
         isLoading = true
         error = nil
 
         do {
-            guard let note = try await repository.read(id: noteId) else {
+            guard let note = try await noteService.read(id: noteId) else {
                 throw NoteViewModelError.noteNotFound
             }
 
@@ -69,7 +69,7 @@ class NoteViewModel: ObservableObject {
         }
     }
 
-    /// Save current state to repository
+    /// Save current state using note service (automatically indexes for search)
     func save() async {
         isLoading = true
         error = nil
@@ -98,11 +98,12 @@ class NoteViewModel: ObservableObject {
             )
 
             // Call create() for new notes, update() for existing
+            // NoteService automatically handles search indexing
             if isNewNote {
-                _ = try await repository.create(note: noteToSave)
+                _ = try await noteService.create(note: noteToSave)
                 isNewNote = false
             } else {
-                _ = try await repository.update(note: noteToSave)
+                _ = try await noteService.update(note: noteToSave)
             }
 
             isLoading = false

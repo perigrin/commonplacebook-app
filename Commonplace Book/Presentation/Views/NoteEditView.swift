@@ -242,7 +242,16 @@ struct NoteEditView_Previews: PreviewProvider {
 
     @MainActor
     static func makeExistingNoteViewModel() -> NoteViewModel {
+        // Create dependencies
         let repository = InMemoryNoteRepository()
+        let embeddingService = EmbeddingService()
+        let searchEngine = VectorSearchEngine(embeddingService: embeddingService)
+        let noteService = NoteService(
+            repository: repository,
+            searchEngine: searchEngine,
+            embeddingService: embeddingService
+        )
+
         let note = Note(
             id: UUID(),
             created: Date().addingTimeInterval(-3600),
@@ -266,10 +275,10 @@ struct NoteEditView_Previews: PreviewProvider {
         )
 
         Task {
-            _ = try? await repository.create(note: note)
+            _ = try? await noteService.create(note: note)
         }
 
-        let viewModel = NoteViewModel(repository: repository, noteId: note.id)
+        let viewModel = NoteViewModel(noteService: noteService, noteId: note.id)
         Task {
             await viewModel.load()
         }
@@ -279,9 +288,18 @@ struct NoteEditView_Previews: PreviewProvider {
 
     @MainActor
     static func makeNewNoteViewModel() -> NoteViewModel {
+        // Create dependencies
         let repository = InMemoryNoteRepository()
+        let embeddingService = EmbeddingService()
+        let searchEngine = VectorSearchEngine(embeddingService: embeddingService)
+        let noteService = NoteService(
+            repository: repository,
+            searchEngine: searchEngine,
+            embeddingService: embeddingService
+        )
+
         let noteId = UUID()
-        let viewModel = NoteViewModel(repository: repository, noteId: noteId)
+        let viewModel = NoteViewModel(noteService: noteService, noteId: noteId)
 
         // Set initial values for new note
         viewModel.updateTitle("")
@@ -292,9 +310,18 @@ struct NoteEditView_Previews: PreviewProvider {
 
     @MainActor
     static func makeViewModelWithError() -> NoteViewModel {
+        // Create dependencies
         let repository = InMemoryNoteRepository()
+        let embeddingService = EmbeddingService()
+        let searchEngine = VectorSearchEngine(embeddingService: embeddingService)
+        let noteService = NoteService(
+            repository: repository,
+            searchEngine: searchEngine,
+            embeddingService: embeddingService
+        )
+
         let noteId = UUID()
-        let viewModel = NoteViewModel(repository: repository, noteId: noteId)
+        let viewModel = NoteViewModel(noteService: noteService, noteId: noteId)
 
         viewModel.updateTitle("")
         viewModel.updateContent("Some content")
