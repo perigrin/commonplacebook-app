@@ -8,13 +8,25 @@ import XCTest
 final class NoteViewModelTests: XCTestCase {
 
     var repository: InMemoryNoteRepository!
+    var embeddingService: EmbeddingService!
+    var searchEngine: VectorSearchEngine!
+    var noteService: NoteService!
     var viewModel: NoteViewModel!
     var testNote: Note!
 
     override func setUp() async throws {
         try await super.setUp()
 
+        // Create dependencies
         repository = InMemoryNoteRepository()
+        embeddingService = EmbeddingService()
+        try await embeddingService.loadModel()
+        searchEngine = VectorSearchEngine(embeddingService: embeddingService)
+        noteService = NoteService(
+            repository: repository,
+            searchEngine: searchEngine,
+            embeddingService: embeddingService
+        )
 
         // Create a test note
         testNote = Note(
@@ -28,12 +40,15 @@ final class NoteViewModelTests: XCTestCase {
             unknownFrontmatterFields: [:]
         )
 
-        // Add test note to repository
-        _ = try await repository.create(note: testNote)
+        // Add test note through note service (automatic indexing)
+        _ = try await noteService.create(note: testNote)
     }
 
     override func tearDown() async throws {
         viewModel = nil
+        noteService = nil
+        searchEngine = nil
+        embeddingService = nil
         repository = nil
         testNote = nil
         try await super.tearDown()
@@ -43,7 +58,7 @@ final class NoteViewModelTests: XCTestCase {
 
     func testInitializeWithNoteId() async {
         // When
-        viewModel = NoteViewModel(repository: repository, noteId: testNote.id)
+        viewModel = NoteViewModel(noteService: noteService, noteId: testNote.id)
 
         // Then
         XCTAssertEqual(viewModel.id, testNote.id, "ViewModel should store note ID")
@@ -55,7 +70,7 @@ final class NoteViewModelTests: XCTestCase {
 
     func testLoadPopulatesAllFields() async {
         // Given
-        viewModel = NoteViewModel(repository: repository, noteId: testNote.id)
+        viewModel = NoteViewModel(noteService: noteService, noteId: testNote.id)
 
         // When
         await viewModel.load()
@@ -74,7 +89,7 @@ final class NoteViewModelTests: XCTestCase {
 
     func testLoadSetsIsLoadingCorrectly() async {
         // Given
-        viewModel = NoteViewModel(repository: repository, noteId: testNote.id)
+        viewModel = NoteViewModel(noteService: noteService, noteId: testNote.id)
 
         // When/Then
         XCTAssertFalse(viewModel.isLoading, "Should not be loading before load()")
@@ -88,7 +103,7 @@ final class NoteViewModelTests: XCTestCase {
     func testLoadHandlesMissingNote() async {
         // Given
         let nonExistentId = UUID()
-        viewModel = NoteViewModel(repository: repository, noteId: nonExistentId)
+        viewModel = NoteViewModel(noteService: noteService, noteId: nonExistentId)
 
         // When
         await viewModel.load()
@@ -115,7 +130,7 @@ final class NoteViewModelTests: XCTestCase {
 
     func testSaveUpdatesRepository() async {
         // Given
-        viewModel = NoteViewModel(repository: repository, noteId: testNote.id)
+        viewModel = NoteViewModel(noteService: noteService, noteId: testNote.id)
         await viewModel.load()
 
         // When
@@ -133,7 +148,7 @@ final class NoteViewModelTests: XCTestCase {
 
     func testSaveValidatesEmptyTitle() async {
         // Given
-        viewModel = NoteViewModel(repository: repository, noteId: testNote.id)
+        viewModel = NoteViewModel(noteService: noteService, noteId: testNote.id)
         await viewModel.load()
 
         // When
@@ -146,7 +161,7 @@ final class NoteViewModelTests: XCTestCase {
 
     func testSaveValidatesEmptyContent() async {
         // Given
-        viewModel = NoteViewModel(repository: repository, noteId: testNote.id)
+        viewModel = NoteViewModel(noteService: noteService, noteId: testNote.id)
         await viewModel.load()
 
         // When
@@ -159,7 +174,7 @@ final class NoteViewModelTests: XCTestCase {
 
     func testSaveValidatesWhitespaceOnlyTitle() async {
         // Given
-        viewModel = NoteViewModel(repository: repository, noteId: testNote.id)
+        viewModel = NoteViewModel(noteService: noteService, noteId: testNote.id)
         await viewModel.load()
 
         // When
@@ -172,7 +187,7 @@ final class NoteViewModelTests: XCTestCase {
 
     func testSaveValidatesWhitespaceOnlyContent() async {
         // Given
-        viewModel = NoteViewModel(repository: repository, noteId: testNote.id)
+        viewModel = NoteViewModel(noteService: noteService, noteId: testNote.id)
         await viewModel.load()
 
         // When
@@ -201,7 +216,7 @@ final class NoteViewModelTests: XCTestCase {
 
     func testUpdateContentChangesContent() async {
         // Given
-        viewModel = NoteViewModel(repository: repository, noteId: testNote.id)
+        viewModel = NoteViewModel(noteService: noteService, noteId: testNote.id)
         await viewModel.load()
         let originalContent = viewModel.content
 
@@ -216,7 +231,7 @@ final class NoteViewModelTests: XCTestCase {
 
     func testUpdateContentClearsErrorWhenBothFieldsValid() async {
         // Given
-        viewModel = NoteViewModel(repository: repository, noteId: testNote.id)
+        viewModel = NoteViewModel(noteService: noteService, noteId: testNote.id)
         await viewModel.load()
 
         // Set an error by trying to save with empty content
@@ -235,7 +250,7 @@ final class NoteViewModelTests: XCTestCase {
 
     func testUpdateTitleChangesTitle() async {
         // Given
-        viewModel = NoteViewModel(repository: repository, noteId: testNote.id)
+        viewModel = NoteViewModel(noteService: noteService, noteId: testNote.id)
         await viewModel.load()
         let originalTitle = viewModel.title
 
@@ -250,7 +265,7 @@ final class NoteViewModelTests: XCTestCase {
 
     func testUpdateTitleClearsErrorWhenBothFieldsValid() async {
         // Given
-        viewModel = NoteViewModel(repository: repository, noteId: testNote.id)
+        viewModel = NoteViewModel(noteService: noteService, noteId: testNote.id)
         await viewModel.load()
 
         // Set an error by trying to save with empty title
@@ -270,7 +285,7 @@ final class NoteViewModelTests: XCTestCase {
     func testErrorIsPublished() async {
         // Given
         let nonExistentId = UUID()
-        viewModel = NoteViewModel(repository: repository, noteId: nonExistentId)
+        viewModel = NoteViewModel(noteService: noteService, noteId: nonExistentId)
 
         // When
         await viewModel.load()
@@ -281,7 +296,7 @@ final class NoteViewModelTests: XCTestCase {
 
     func testSuccessfulSaveClearsError() async {
         // Given
-        viewModel = NoteViewModel(repository: repository, noteId: testNote.id)
+        viewModel = NoteViewModel(noteService: noteService, noteId: testNote.id)
         await viewModel.load()
 
         // Create an error state
@@ -301,7 +316,7 @@ final class NoteViewModelTests: XCTestCase {
 
     func testReadOnlyFieldsNotModified() async {
         // Given
-        viewModel = NoteViewModel(repository: repository, noteId: testNote.id)
+        viewModel = NoteViewModel(noteService: noteService, noteId: testNote.id)
         await viewModel.load()
 
         let originalId = viewModel.id
@@ -330,7 +345,7 @@ final class NoteViewModelTests: XCTestCase {
         ]
         _ = try? await repository.update(note: noteWithUnknownFields)
 
-        viewModel = NoteViewModel(repository: repository, noteId: testNote.id)
+        viewModel = NoteViewModel(noteService: noteService, noteId: testNote.id)
 
         // When
         await viewModel.load()
@@ -347,7 +362,7 @@ final class NoteViewModelTests: XCTestCase {
     func testSaveCreatesNewNoteWhenNotLoaded() async {
         // Given
         let newNoteId = UUID()
-        viewModel = NoteViewModel(repository: repository, noteId: newNoteId)
+        viewModel = NoteViewModel(noteService: noteService, noteId: newNoteId)
         viewModel.updateTitle("New Note")
         viewModel.updateContent("New note content")
 
@@ -364,7 +379,7 @@ final class NoteViewModelTests: XCTestCase {
 
     func testSaveUpdatesExistingNoteAfterLoad() async {
         // Given
-        viewModel = NoteViewModel(repository: repository, noteId: testNote.id)
+        viewModel = NoteViewModel(noteService: noteService, noteId: testNote.id)
         await viewModel.load()
 
         // When - Update and save
@@ -413,7 +428,7 @@ final class NoteViewModelTests: XCTestCase {
 
     func testUpdateClearsValidationErrorOnlyWhenBothFieldsValid() async {
         // Given
-        viewModel = NoteViewModel(repository: repository, noteId: testNote.id)
+        viewModel = NoteViewModel(noteService: noteService, noteId: testNote.id)
         await viewModel.load()
         viewModel.updateTitle("")
         await viewModel.save()
@@ -436,7 +451,7 @@ final class NoteViewModelTests: XCTestCase {
 
     func testLoadingStateIsClearedOnValidationFailure() async {
         // Given
-        viewModel = NoteViewModel(repository: repository, noteId: testNote.id)
+        viewModel = NoteViewModel(noteService: noteService, noteId: testNote.id)
         await viewModel.load()
         viewModel.updateTitle("") // Make invalid
 
