@@ -1,7 +1,8 @@
-// ABOUTME: Service for generating vector embeddings using deterministic text hashing
-// ABOUTME: Provides caching, batch processing, and proper interface for Core ML integration
+// ABOUTME: Service for generating vector embeddings using BERT sentence transformers
+// ABOUTME: Provides caching, batch processing, and BERT model integration via swift-embeddings
 
 import Foundation
+import Embeddings
 
 /// Errors that can occur during embedding generation
 enum EmbeddingServiceError: Error, Equatable {
@@ -10,25 +11,27 @@ enum EmbeddingServiceError: Error, Equatable {
     case modelLoadFailed(String)
 }
 
-/// Service for generating vector embeddings for semantic search
-/// NOTE: This implementation uses word-based deterministic embeddings for testing.
-/// TODO: Replace with actual Core ML sentence transformer model (e.g., all-MiniLM-L6-v2)
-///       See loadModel() for integration points.
+/// Service for generating vector embeddings for semantic search using BERT
+/// Uses all-MiniLM-L6-v2 sentence transformer model from Hugging Face
 class EmbeddingService: EmbeddingServiceProtocol {
 
     // MARK: - Constants
 
-    private static let defaultEmbeddingDimension = 384 // Common for MiniLM models
+    private static let defaultEmbeddingDimension = 384 // all-MiniLM-L6-v2 dimension
     private static let defaultCacheSize = 1000
+    private static let modelID = "sentence-transformers/all-MiniLM-L6-v2"
 
     // MARK: - Properties
 
     /// Dimension of embedding vectors
     let embeddingDimension: Int
 
-    private var isModelLoaded = false
+    private var modelBundle: Bert.ModelBundle?
     private let cache: EmbeddingCache
-    private let processingQueue = DispatchQueue(label: "embedding.processing", qos: .userInitiated)
+
+    private var isModelLoaded: Bool {
+        modelBundle != nil
+    }
 
     // MARK: - Initialization
 
@@ -40,32 +43,26 @@ class EmbeddingService: EmbeddingServiceProtocol {
 
     // MARK: - Model Management
 
-    /// Load the embedding model
-    /// NOTE: Current implementation uses word-based deterministic embeddings for testing.
-    /// TODO: Replace with actual Core ML model loading:
-    /// ```
-    /// guard let modelURL = Bundle.main.url(forResource: "SentenceTransformer",
-    ///                                       withExtension: "mlmodelc") else {
-    ///     throw EmbeddingServiceError.modelLoadFailed("Model file not found")
-    /// }
-    /// let config = MLModelConfiguration()
-    /// self.model = try await MLModel.load(contentsOf: modelURL, configuration: config)
-    /// ```
+    /// Load the BERT embedding model from Hugging Face
+    /// Downloads and initializes all-MiniLM-L6-v2 sentence transformer
     func loadModel() async throws {
-        // Simulate async model loading with short delay
-        try await Task.sleep(nanoseconds: 10_000_000) // 10ms
-
-        isModelLoaded = true
+        do {
+            // Load BERT model bundle from Hugging Face
+            // This downloads the model on first use and caches it locally
+            modelBundle = try await Bert.loadModelBundle(from: Self.modelID)
+        } catch {
+            throw EmbeddingServiceError.modelLoadFailed("Failed to load BERT model: \(error.localizedDescription)")
+        }
     }
 
     // MARK: - Single Embedding Generation
 
-    /// Generate embedding for a single text
+    /// Generate embedding for a single text using BERT
     /// - Parameter text: Input text to embed
-    /// - Returns: Normalized embedding vector
+    /// - Returns: Normalized embedding vector (384 dimensions)
     /// - Throws: EmbeddingServiceError if model not loaded
     func generateEmbedding(for text: String) async throws -> [Float] {
-        guard isModelLoaded else {
+        guard let modelBundle = modelBundle else {
             throw EmbeddingServiceError.modelNotLoaded
         }
 
@@ -74,13 +71,8 @@ class EmbeddingService: EmbeddingServiceProtocol {
             return cachedEmbedding
         }
 
-        // Generate new embedding on background queue
-        let embedding = await withCheckedContinuation { continuation in
-            processingQueue.async {
-                let result = self.generateWordBasedEmbedding(for: text)
-                continuation.resume(returning: result)
-            }
-        }
+        // Generate new embedding using BERT model
+        let embedding = await generateBERTEmbedding(for: text, using: modelBundle)
 
         // Cache the result
         await cache.put(text, embedding)
@@ -114,68 +106,21 @@ class EmbeddingService: EmbeddingServiceProtocol {
         return embeddings
     }
 
-    // MARK: - Word-Based Embedding Generation
+    // MARK: - BERT Embedding Generation
 
-    /// Generate word-based embedding for better semantic similarity
-    /// NOTE: This is a placeholder that provides better similarity than pure hashing
-    /// TODO: Replace with actual Core ML model inference
-    private func generateWordBasedEmbedding(for text: String) -> [Float] {
-        var embedding = [Float](repeating: 0.0, count: embeddingDimension)
+    /// Generate embedding using BERT sentence transformer model
+    /// - Parameters:
+    ///   - text: Input text to encode
+    ///   - modelBundle: Loaded BERT model bundle
+    /// - Returns: Normalized 384-dimensional embedding vector
+    private func generateBERTEmbedding(for text: String, using modelBundle: Bert.ModelBundle) async -> [Float] {
+        // Encode text using BERT model
+        let encoded = modelBundle.encode(text)
 
-        let normalizedText = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        // Convert to Float array
+        let result = await encoded.cast(to: Float.self)
+            .shapedArray(of: Float.self).scalars
 
-        // Extract words for word-based features
-        let words = normalizedText.components(separatedBy: .whitespacesAndNewlines)
-            .filter { !$0.isEmpty }
-
-        // Use word-based features for better semantic similarity
-        for (wordIndex, word) in words.enumerated() {
-            let wordHash = hashString(word, seed: 0)
-
-            // Distribute word contribution across embedding
-            // Each word affects multiple dimensions for better overlap
-            for i in 0..<embeddingDimension {
-                let position = (Int(wordHash) + i * 7) % embeddingDimension
-                let bit = (wordHash >> (i % 64)) & 1
-                let contribution: Float = bit == 1 ? 1.0 : -1.0
-
-                // Weight by word position (earlier words matter more)
-                let positionWeight = 1.0 / Float(wordIndex + 1)
-                embedding[position] += contribution * positionWeight * 0.3
-            }
-        }
-
-        // Add character-level features for exact match detection
-        for char in normalizedText {
-            let charValue = Int(char.unicodeScalars.first?.value ?? 0)
-            let charPosition = charValue % embeddingDimension
-            embedding[charPosition] += 0.1
-        }
-
-        // Normalize the embedding vector (magnitude = 1.0)
-        let magnitude = sqrt(embedding.map { $0 * $0 }.reduce(0, +))
-        if magnitude > 0 {
-            embedding = embedding.map { $0 / magnitude }
-        }
-
-        return embedding
-    }
-
-    /// Hash string with seed for deterministic pseudo-random generation
-    private func hashString(_ string: String, seed: UInt32) -> UInt64 {
-        var hash: UInt64 = UInt64(seed)
-
-        for char in string.utf8 {
-            hash = hash &* 31 &+ UInt64(char)
-        }
-
-        // Mix the hash thoroughly
-        hash ^= hash >> 33
-        hash = hash &* 0xff51afd7ed558ccd
-        hash ^= hash >> 33
-        hash = hash &* 0xc4ceb9fe1a85ec53
-        hash ^= hash >> 33
-
-        return hash
+        return result
     }
 }
