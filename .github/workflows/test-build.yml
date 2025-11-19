@@ -39,7 +39,7 @@ jobs:
           xcodebuild clean build \
             -project "Commonplace Book.xcodeproj" \
             -scheme "Commonplace Book" \
-            -destination "platform=iOS Simulator,name=iPhone 16,OS=18.0" \
+            -destination "generic/platform=iOS Simulator" \
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO \
             | xcpretty
