@@ -35,8 +35,14 @@ jobs:
       - name: Set up Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: latest-stable
-      
+          xcode-version: '16.2'
+
+      - name: Resolve SPM dependencies
+        run: |
+          xcodebuild -resolvePackageDependencies \
+            -project "Commonplace Book.xcodeproj" \
+            -scheme "Commonplace Book"
+
       - name: Set up code signing
         uses: apple-actions/import-codesign-certs@v1
         with:
