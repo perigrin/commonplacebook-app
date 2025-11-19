@@ -626,7 +626,7 @@
 			repositoryURL = "https://github.com/jkrukowski/swift-embeddings";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 0.0.16;
+				minimumVersion = 0.0.24;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
