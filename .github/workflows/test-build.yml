@@ -33,13 +33,17 @@ jobs:
             -project "Commonplace Book.xcodeproj" \
             -scheme "Commonplace Book"
 
+      - name: Install iOS Platform
+        run: |
+          xcodebuild -downloadPlatform iOS
+
       - name: Build for iOS Simulator
         run: |
           set -o pipefail
           xcodebuild clean build \
             -project "Commonplace Book.xcodeproj" \
             -scheme "Commonplace Book" \
-            -destination "generic/platform=iOS Simulator" \
+            -destination "platform=iOS Simulator,name=iPhone 16" \
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO \
             | xcpretty
