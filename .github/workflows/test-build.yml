@@ -27,6 +27,11 @@ jobs:
       - name: Install xcpretty
         run: gem install xcpretty
 
+      - name: Clear SPM cache
+        run: |
+          rm -rf ~/Library/Caches/org.swift.swiftpm
+          rm -rf ~/Library/Developer/Xcode/DerivedData
+
       - name: Resolve SPM dependencies
         run: |
           xcodebuild -resolvePackageDependencies \
@@ -73,6 +78,11 @@ jobs:
 
       - name: Install xcpretty
         run: gem install xcpretty
+
+      - name: Clear SPM cache
+        run: |
+          rm -rf ~/Library/Caches/org.swift.swiftpm
+          rm -rf ~/Library/Developer/Xcode/DerivedData
 
       - name: Resolve SPM dependencies
         run: |
