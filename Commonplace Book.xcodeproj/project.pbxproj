@@ -115,7 +115,6 @@
 				E70A9F512DC46AAA002546E8 /* Yams */,
 				E70A9F542DC46AAB002546E8 /* Automerge */,
 				E70A9F572DC46AAC002546E8 /* SQLite */,
-				E70A9F5A2DC46AAD002546E8 /* Embeddings */,
 			);
 			productName = "Commonplace Book";
 			productReference = E70A9F112DC468D4002546E8 /* Commonplace Book.app */;
@@ -203,7 +202,6 @@
 				E70A9F502DC46AAA002546E8 /* XCRemoteSwiftPackageReference "Yams" */,
 				E70A9F532DC46AAB002546E8 /* XCRemoteSwiftPackageReference "automerge-swift" */,
 				E70A9F562DC46AAC002546E8 /* XCRemoteSwiftPackageReference "SQLite.swift" */,
-				E70A9F592DC46AAD002546E8 /* XCRemoteSwiftPackageReference "swift-embeddings" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = E70A9F122DC468D4002546E8 /* Products */;
@@ -621,14 +619,6 @@
 				minimumVersion = 0.15.3;
 			};
 		};
-		E70A9F592DC46AAD002546E8 /* XCRemoteSwiftPackageReference "swift-embeddings" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/jkrukowski/swift-embeddings";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 0.0.24;
-			};
-		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -646,11 +636,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = E70A9F562DC46AAC002546E8 /* XCRemoteSwiftPackageReference "SQLite.swift" */;
 			productName = SQLite;
-		};
-		E70A9F5A2DC46AAD002546E8 /* Embeddings */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E70A9F592DC46AAD002546E8 /* XCRemoteSwiftPackageReference "swift-embeddings" */;
-			productName = Embeddings;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

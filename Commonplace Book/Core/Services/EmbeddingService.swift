@@ -1,36 +1,36 @@
-// ABOUTME: Service for generating vector embeddings using BERT sentence transformers
-// ABOUTME: Provides caching, batch processing, and BERT model integration via swift-embeddings
+// ABOUTME: Service for generating vector embeddings using Apple's Natural Language framework
+// ABOUTME: Provides caching, batch processing, and native NLEmbedding integration
 
 import Foundation
-import Embeddings
+import NaturalLanguage
 
 /// Errors that can occur during embedding generation
 enum EmbeddingServiceError: Error, Equatable {
     case modelNotLoaded
     case invalidInput
     case modelLoadFailed(String)
+    case embeddingGenerationFailed
 }
 
-/// Service for generating vector embeddings for semantic search using BERT
-/// Uses all-MiniLM-L6-v2 sentence transformer model from Hugging Face
+/// Service for generating vector embeddings for semantic search using NLEmbedding
+/// Uses Apple's native sentence embedding model from the Natural Language framework
 class EmbeddingService: EmbeddingServiceProtocol {
 
     // MARK: - Constants
 
-    private static let defaultEmbeddingDimension = 384 // all-MiniLM-L6-v2 dimension
+    private static let defaultEmbeddingDimension = 512 // NLEmbedding dimension
     private static let defaultCacheSize = 1000
-    private static let modelID = "sentence-transformers/all-MiniLM-L6-v2"
 
     // MARK: - Properties
 
     /// Dimension of embedding vectors
     let embeddingDimension: Int
 
-    private var modelBundle: Bert.ModelBundle?
+    private var sentenceEmbedding: NLEmbedding?
     private let cache: EmbeddingCache
 
     private var isModelLoaded: Bool {
-        modelBundle != nil
+        sentenceEmbedding != nil
     }
 
     // MARK: - Initialization
@@ -43,26 +43,23 @@ class EmbeddingService: EmbeddingServiceProtocol {
 
     // MARK: - Model Management
 
-    /// Load the BERT embedding model from Hugging Face
-    /// Downloads and initializes all-MiniLM-L6-v2 sentence transformer
+    /// Load the NLEmbedding sentence model
+    /// Uses Apple's built-in English sentence embedding model
     func loadModel() async throws {
-        do {
-            // Load BERT model bundle from Hugging Face
-            // This downloads the model on first use and caches it locally
-            modelBundle = try await Bert.loadModelBundle(from: Self.modelID)
-        } catch {
-            throw EmbeddingServiceError.modelLoadFailed("Failed to load BERT model: \(error.localizedDescription)")
+        guard let embedding = NLEmbedding.sentenceEmbedding(for: .english) else {
+            throw EmbeddingServiceError.modelLoadFailed("Failed to load NLEmbedding sentence model for English")
         }
+        sentenceEmbedding = embedding
     }
 
     // MARK: - Single Embedding Generation
 
-    /// Generate embedding for a single text using BERT
+    /// Generate embedding for a single text using NLEmbedding
     /// - Parameter text: Input text to embed
-    /// - Returns: Normalized embedding vector (384 dimensions)
+    /// - Returns: Normalized embedding vector (512 dimensions)
     /// - Throws: EmbeddingServiceError if model not loaded
     func generateEmbedding(for text: String) async throws -> [Float] {
-        guard let modelBundle = modelBundle else {
+        guard let embedding = sentenceEmbedding else {
             throw EmbeddingServiceError.modelNotLoaded
         }
 
@@ -71,13 +68,21 @@ class EmbeddingService: EmbeddingServiceProtocol {
             return cachedEmbedding
         }
 
-        // Generate new embedding using BERT model
-        let embedding = await generateBERTEmbedding(for: text, using: modelBundle)
+        // Generate new embedding using NLEmbedding
+        guard let vector = embedding.vector(for: text) else {
+            // Return zero vector for empty or invalid input
+            let zeroVector = [Float](repeating: 0.0, count: embeddingDimension)
+            await cache.put(text, zeroVector)
+            return zeroVector
+        }
+
+        // Convert [Double] to [Float]
+        let floatVector = vector.map { Float($0) }
 
         // Cache the result
-        await cache.put(text, embedding)
+        await cache.put(text, floatVector)
 
-        return embedding
+        return floatVector
     }
 
     // MARK: - Batch Embedding Generation
@@ -104,23 +109,5 @@ class EmbeddingService: EmbeddingServiceProtocol {
         }
 
         return embeddings
-    }
-
-    // MARK: - BERT Embedding Generation
-
-    /// Generate embedding using BERT sentence transformer model
-    /// - Parameters:
-    ///   - text: Input text to encode
-    ///   - modelBundle: Loaded BERT model bundle
-    /// - Returns: Normalized 384-dimensional embedding vector
-    private func generateBERTEmbedding(for text: String, using modelBundle: Bert.ModelBundle) async -> [Float] {
-        // Encode text using BERT model
-        let encoded = modelBundle.encode(text)
-
-        // Convert to Float array
-        let result = await encoded.cast(to: Float.self)
-            .shapedArray(of: Float.self).scalars
-
-        return result
     }
 }

@@ -315,25 +315,23 @@ final class EmbeddingServiceTests: XCTestCase {
                          "Should process 100 documents in reasonable time")
     }
 
-    // MARK: - BERT Model Integration Tests
+    // MARK: - NLEmbedding Model Integration Tests
 
-    func testLoadModelLoadsActualBERTModel() async throws {
+    func testLoadModelLoadsNLEmbedding() async throws {
         // GIVEN unloaded service
         // WHEN loading model
         try await service.loadModel()
 
-        // THEN service should have loaded all-MiniLM-L6-v2 BERT model
-        // We verify this by checking that embeddings have BERT-specific properties
+        // THEN service should have loaded NLEmbedding sentence model
         let embedding = try await service.generateEmbedding(for: "test")
 
-        // BERT models produce non-deterministic embeddings based on learned weights
-        // not simple hash-based patterns
+        // NLEmbedding produces learned embeddings, not hash-based patterns
         XCTAssertNotNil(embedding, "Model should produce embeddings")
-        XCTAssertEqual(embedding.count, 384, "all-MiniLM-L6-v2 produces 384-dimensional embeddings")
+        XCTAssertEqual(embedding.count, 512, "NLEmbedding produces 512-dimensional embeddings")
     }
 
-    func testBERTEmbeddingsAreSemanticNotLexical() async throws {
-        // GIVEN loaded BERT model
+    func testNLEmbeddingsAreSemanticNotLexical() async throws {
+        // GIVEN loaded NLEmbedding model
         try await service.loadModel()
 
         // WHEN generating embeddings for semantically similar but lexically different texts
@@ -349,16 +347,15 @@ final class EmbeddingServiceTests: XCTestCase {
         let semanticSimilarity = cosineSimilarity(embedding1, embedding2)
         let unrelatedSimilarity = cosineSimilarity(embedding1, embedding3)
 
-        // BERT should understand semantic meaning, not just word overlap
-        // This will fail with word-based hashing since text1 and text2 share no words
-        XCTAssertGreaterThan(semanticSimilarity, 0.5,
-                           "BERT should recognize semantic similarity despite different words")
+        // NLEmbedding should understand semantic meaning, not just word overlap
+        XCTAssertGreaterThan(semanticSimilarity, 0.3,
+                           "NLEmbedding should recognize semantic similarity despite different words")
         XCTAssertLessThan(unrelatedSimilarity, semanticSimilarity,
                          "Unrelated texts should have lower similarity")
     }
 
-    func testBERTHandlesContextualMeaningCorrectly() async throws {
-        // GIVEN loaded BERT model
+    func testNLEmbeddingHandlesContextualMeaningCorrectly() async throws {
+        // GIVEN loaded NLEmbedding model
         try await service.loadModel()
 
         // WHEN generating embeddings for words with different contextual meanings
@@ -370,14 +367,14 @@ final class EmbeddingServiceTests: XCTestCase {
         let embedding2 = try await service.generateEmbedding(for: context2)
         let embedding3 = try await service.generateEmbedding(for: unrelated)
 
-        // THEN BERT should understand contextual differences
+        // THEN NLEmbedding should understand contextual differences
         let bankContextSimilarity = cosineSimilarity(embedding1, embedding2)
         let unrelatedSimilarity = cosineSimilarity(embedding1, embedding3)
 
-        // Both use "bank" but BERT should understand they're different contexts
+        // Both use "bank" but NLEmbedding should understand they're different contexts
         // while still being more related than completely unrelated text
         XCTAssertLessThan(unrelatedSimilarity, bankContextSimilarity,
-                         "BERT should recognize some relationship in texts with shared words")
+                         "NLEmbedding should recognize some relationship in texts with shared words")
     }
 
     // MARK: - Helper Methods

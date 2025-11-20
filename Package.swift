@@ -15,8 +15,7 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/jpsim/Yams.git", from: "5.0.6"),
         .package(url: "https://github.com/automerge/automerge-swift.git", from: "0.6.1"),
-        .package(url: "https://github.com/stephencelis/SQLite.swift.git", from: "0.15.3"),
-        .package(url: "https://github.com/jkrukowski/swift-embeddings", from: "0.0.24")
+        .package(url: "https://github.com/stephencelis/SQLite.swift.git", from: "0.15.3")
     ],
     targets: [
         .target(
@@ -24,8 +23,7 @@ let package = Package(
             dependencies: [
                 "Yams",
                 .product(name: "Automerge", package: "automerge-swift"),
-                .product(name: "SQLite", package: "SQLite.swift"),
-                .product(name: "Embeddings", package: "swift-embeddings")
+                .product(name: "SQLite", package: "SQLite.swift")
             ],
             path: "Commonplace Book",
             exclude: [
