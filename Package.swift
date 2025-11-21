@@ -15,7 +15,7 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/jpsim/Yams.git", from: "5.0.6"),
         .package(url: "https://github.com/automerge/automerge-swift.git", from: "0.6.1"),
-        .package(url: "https://github.com/stephencelis/SQLite.swift.git", exact: "0.14.1")
+        .package(url: "https://github.com/stephencelis/SQLite.swift.git", from: "0.15.0")
     ],
     targets: [
         .target(
