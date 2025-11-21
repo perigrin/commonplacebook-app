@@ -16,18 +16,18 @@ actor CRDTNoteRepository: NoteRepository, CRDTNoteRepositoryProtocol {
 
     // SQLite table definition
     private nonisolated(unsafe) let notesTable = Table("notes")
-    private nonisolated(unsafe) let idColumn = Expression<String>(literal: "id")
-    private nonisolated(unsafe) let crdtDataColumn = Expression<Data>(literal: "crdt_data")
-    private nonisolated(unsafe) let filePathColumn = Expression<String>(literal: "file_path")
-    private nonisolated(unsafe) let lastModifiedColumn = Expression<Int64>(literal: "last_modified")
+    private nonisolated(unsafe) let idColumn = Expression<String>("id")
+    private nonisolated(unsafe) let crdtDataColumn = Expression<Data>("crdt_data")
+    private nonisolated(unsafe) let filePathColumn = Expression<String>("file_path")
+    private nonisolated(unsafe) let lastModifiedColumn = Expression<Int64>("last_modified")
     // Columns for efficient searching without loading CRDTs
-    private nonisolated(unsafe) let titleColumn = Expression<String>(literal: "title")
-    private nonisolated(unsafe) let contentColumn = Expression<String>(literal: "content")
+    private nonisolated(unsafe) let titleColumn = Expression<String>("title")
+    private nonisolated(unsafe) let contentColumn = Expression<String>("content")
 
     // Tombstone table for delete tracking
     private nonisolated(unsafe) let tombstonesTable = Table("tombstones")
-    private nonisolated(unsafe) let tombstoneIdColumn = Expression<String>(literal: "id")
-    private nonisolated(unsafe) let tombstoneDeletedAtColumn = Expression<Int64>(literal: "deleted_at")
+    private nonisolated(unsafe) let tombstoneIdColumn = Expression<String>("id")
+    private nonisolated(unsafe) let tombstoneDeletedAtColumn = Expression<Int64>("deleted_at")
 
     // LRU cache for documents (bounded memory)
     private let maxCacheSize = 500  // Increased from 100
