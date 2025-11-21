@@ -31,12 +31,17 @@ jobs:
         run: |
           rm -rf ~/Library/Caches/org.swift.swiftpm
           rm -rf ~/Library/Developer/Xcode/DerivedData
+          rm -rf .build
+          rm -rf "Commonplace Book.xcodeproj/project.xcworkspace/xcshareddata/swiftpm"
+          mkdir -p "Commonplace Book.xcodeproj/project.xcworkspace/xcshareddata/swiftpm"
+          cp Package.resolved "Commonplace Book.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
 
       - name: Resolve SPM dependencies
         run: |
           xcodebuild -resolvePackageDependencies \
             -project "Commonplace Book.xcodeproj" \
-            -scheme "Commonplace Book"
+            -scheme "Commonplace Book" \
+            -onlyUsePackageVersionsFromResolvedFile
 
       - name: Install iOS Platform
         run: |
@@ -83,12 +88,17 @@ jobs:
         run: |
           rm -rf ~/Library/Caches/org.swift.swiftpm
           rm -rf ~/Library/Developer/Xcode/DerivedData
+          rm -rf .build
+          rm -rf "Commonplace Book.xcodeproj/project.xcworkspace/xcshareddata/swiftpm"
+          mkdir -p "Commonplace Book.xcodeproj/project.xcworkspace/xcshareddata/swiftpm"
+          cp Package.resolved "Commonplace Book.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
 
       - name: Resolve SPM dependencies
         run: |
           xcodebuild -resolvePackageDependencies \
             -project "Commonplace Book.xcodeproj" \
-            -scheme "Commonplace Book"
+            -scheme "Commonplace Book" \
+            -onlyUsePackageVersionsFromResolvedFile
 
       - name: Build for macOS
         run: |
