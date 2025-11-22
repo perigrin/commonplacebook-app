@@ -14,16 +14,17 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     var appCoordinator: AppCoordinator?
 
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
-        // Create the SwiftUI view that provides the window contents.
-        let homeView = HomeView().environment(\.managedObjectContext, PersistenceController.shared.container.viewContext)
-
         // Initialize app coordinator
         appCoordinator = AppCoordinator()
-        
+
+        // Create the SwiftUI view that provides the window contents.
+        let rootView = appCoordinator!.rootView
+            .environment(\.managedObjectContext, PersistenceController.shared.container.viewContext)
+
         // Use a UIHostingController as window root view controller.
         if let windowScene = scene as? UIWindowScene {
             let window = UIWindow(windowScene: windowScene)
-            window.rootViewController = UIHostingController(rootView: homeView)
+            window.rootViewController = UIHostingController(rootView: rootView)
             self.window = window
             window.makeKeyAndVisible()
         }

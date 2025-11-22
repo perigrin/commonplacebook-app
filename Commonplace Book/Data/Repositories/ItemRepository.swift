@@ -93,20 +93,6 @@ class ItemRepository: CoreDataRepository {
         return fetch(withPredicate: predicate)
     }
     
-    /// Fetches completed items
-    /// - Returns: A publisher that emits an array of completed items or an error
-    func fetchCompleted() -> AnyPublisher<[Item], Error> {
-        let predicate = NSPredicate(format: "isCompleted == %@", NSNumber(value: true))
-        return fetch(withPredicate: predicate)
-    }
-    
-    /// Fetches incomplete items
-    /// - Returns: A publisher that emits an array of incomplete items or an error
-    func fetchIncomplete() -> AnyPublisher<[Item], Error> {
-        let predicate = NSPredicate(format: "isCompleted == %@", NSNumber(value: false))
-        return fetch(withPredicate: predicate)
-    }
-    
     /// Saves a new item
     /// - Parameter entity: The item to save
     /// - Returns: A publisher that emits the saved item or an error
@@ -181,22 +167,6 @@ class ItemRepository: CoreDataRepository {
                 }
             }
         }.eraseToAnyPublisher()
-    }
-    
-    /// Marks an item as completed
-    /// - Parameter entity: The item to mark as completed
-    /// - Returns: A publisher that emits the updated item or an error
-    func markAsCompleted(entity: Item) -> AnyPublisher<Item, Error> {
-        entity.isCompleted = true
-        return update(entity: entity)
-    }
-    
-    /// Marks an item as incomplete
-    /// - Parameter entity: The item to mark as incomplete
-    /// - Returns: A publisher that emits the updated item or an error
-    func markAsIncomplete(entity: Item) -> AnyPublisher<Item, Error> {
-        entity.isCompleted = false
-        return update(entity: entity)
     }
     
     /// Deletes an item
