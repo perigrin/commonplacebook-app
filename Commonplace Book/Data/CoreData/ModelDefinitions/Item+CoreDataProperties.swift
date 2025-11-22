@@ -15,9 +15,6 @@ extension Item {
     @NSManaged public var title_: String?
     @NSManaged public var itemDescription_: String?
     @NSManaged public var category_: String?
-    @NSManaged public var isCompleted: Bool
-    @NSManaged public var priority: Int16
-    @NSManaged public var dueDate: Date?
     @NSManaged public var timestamp: Date?
     @NSManaged public var tags: NSSet?
     
