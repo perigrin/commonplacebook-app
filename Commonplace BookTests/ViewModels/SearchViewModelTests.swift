@@ -10,13 +10,16 @@ final class SearchViewModelTests: XCTestCase {
     var viewModel: SearchViewModel!
     var mockSearchEngine: MockSearchVectorSearchEngine!
     var mockRepository: MockSearchNoteRepository!
+    var mockNoteService: MockNoteService!
     var cancellables: Set<AnyCancellable>!
 
     override func setUpWithError() throws {
         mockSearchEngine = MockSearchVectorSearchEngine()
         mockRepository = MockSearchNoteRepository()
+        mockNoteService = MockNoteService(repository: mockRepository)
         viewModel = SearchViewModel(
             searchEngine: mockSearchEngine,
+            noteService: mockNoteService,
             repository: mockRepository
         )
         cancellables = []
@@ -25,6 +28,7 @@ final class SearchViewModelTests: XCTestCase {
     override func tearDownWithError() throws {
         cancellables = nil
         viewModel = nil
+        mockNoteService = nil
         mockSearchEngine = nil
         mockRepository = nil
     }
@@ -353,35 +357,5 @@ actor MockSearchVectorSearchEngine: VectorSearchEngineProtocol {
 
     func rebuild() async {
         // No-op for search tests
-    }
-}
-
-actor MockSearchNoteRepository: NoteRepository {
-    private var notes: [UUID: Note] = [:]
-
-    func addNote(_ note: Note) {
-        notes[note.id] = note
-    }
-
-    func create(note: Note) async throws -> Note {
-        notes[note.id] = note
-        return note
-    }
-
-    func read(id: UUID) async throws -> Note? {
-        return notes[id]
-    }
-
-    func update(note: Note) async throws -> Note {
-        notes[note.id] = note
-        return note
-    }
-
-    func delete(id: UUID) async throws {
-        notes.removeValue(forKey: id)
-    }
-
-    func list(sortedBy: NoteSortOrder) async throws -> [Note] {
-        return Array(notes.values)
     }
 }

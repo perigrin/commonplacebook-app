@@ -9,24 +9,23 @@ import SwiftUI
 final class NoteListViewSearchTests: XCTestCase {
     var mockRepository: MockSearchNoteRepository!
     var mockSearchEngine: MockNoteListSearchEngine!
-    var mockMetadataCollector: MockMetadataCollector!
-    var mockEmbeddingService: MockEmbeddingService!
+    var mockNoteService: MockNoteListViewNoteService!
     var listViewModel: NoteListViewModel!
     var searchViewModel: SearchViewModel!
 
     override func setUpWithError() throws {
         mockRepository = MockSearchNoteRepository()
         mockSearchEngine = MockNoteListSearchEngine()
-        mockMetadataCollector = MockMetadataCollector()
-        mockEmbeddingService = MockEmbeddingService()
+        mockNoteService = MockNoteListViewNoteService(repository: mockRepository)
 
         listViewModel = NoteListViewModel(
-            repository: mockRepository,
-            metadataCollector: mockMetadataCollector
+            noteService: mockNoteService,
+            repository: mockRepository
         )
 
         searchViewModel = SearchViewModel(
             searchEngine: mockSearchEngine,
+            noteService: mockNoteService,
             repository: mockRepository
         )
     }
@@ -34,8 +33,7 @@ final class NoteListViewSearchTests: XCTestCase {
     override func tearDownWithError() throws {
         mockRepository = nil
         mockSearchEngine = nil
-        mockMetadataCollector = nil
-        mockEmbeddingService = nil
+        mockNoteService = nil
         listViewModel = nil
         searchViewModel = nil
     }
@@ -356,8 +354,10 @@ final class NoteListViewSearchTests: XCTestCase {
         await slowRepository.addNote(note3, loadDelay: 50_000_000)  // 50ms
 
         let searchEngine = MockNoteListSearchEngine()
+        let slowNoteService = MockNoteListViewNoteService(repository: slowRepository)
         let viewModel = SearchViewModel(
             searchEngine: searchEngine,
+            noteService: slowNoteService,
             repository: slowRepository
         )
 
@@ -467,16 +467,13 @@ actor SlowLoadingMockRepository: NoteRepository {
         return note
     }
 
-    func read(id: UUID) async throws -> Note {
+    func read(id: UUID) async throws -> Note? {
         // Simulate delay for this note
         if let delay = loadDelays[id] {
             try await Task.sleep(nanoseconds: delay)
         }
 
-        guard let note = notes[id] else {
-            throw NSError(domain: "test", code: 404, userInfo: [NSLocalizedDescriptionKey: "Note not found"])
-        }
-        return note
+        return notes[id]
     }
 
     func update(note: Note) async throws -> Note {
@@ -488,19 +485,70 @@ actor SlowLoadingMockRepository: NoteRepository {
         notes.removeValue(forKey: id)
     }
 
-    func listAll() async throws -> [Note] {
+    func list() async throws -> [Note] {
         return Array(notes.values)
     }
 
-    func markAsIndexed(id: UUID) async throws {
-        // No-op for tests
+    func search(query: String) async throws -> [Note] {
+        return Array(notes.values).filter { note in
+            note.title?.localizedCaseInsensitiveContains(query) == true ||
+            note.content.localizedCaseInsensitiveContains(query)
+        }
     }
 
-    func markAsNotIndexed(id: UUID) async throws {
-        // No-op for tests
-    }
-
-    func needsIndexing() async throws -> [Note] {
+    func listTrashed() async throws -> [Note] {
         return []
+    }
+
+    func restore(id: UUID) async throws {
+        // No-op for tests
+    }
+
+    func purge(id: UUID) async throws {
+        notes.removeValue(forKey: id)
+    }
+}
+
+actor MockNoteListViewNoteService: NoteServiceProtocol {
+    private let repository: NoteRepository
+
+    init(repository: NoteRepository) {
+        self.repository = repository
+    }
+
+    func create(note: Note) async throws -> Note {
+        return try await repository.create(note: note)
+    }
+
+    func update(note: Note) async throws -> Note {
+        return try await repository.update(note: note)
+    }
+
+    func delete(id: UUID) async throws {
+        try await repository.delete(id: id)
+    }
+
+    func read(id: UUID) async throws -> Note? {
+        return try await repository.read(id: id)
+    }
+
+    func list() async throws -> [Note] {
+        return try await repository.list()
+    }
+
+    func search(query: String) async throws -> [Note] {
+        return try await repository.search(query: query)
+    }
+
+    func listTrashed() async throws -> [Note] {
+        return try await repository.listTrashed()
+    }
+
+    func restore(id: UUID) async throws {
+        try await repository.restore(id: id)
+    }
+
+    func purge(id: UUID) async throws {
+        try await repository.purge(id: id)
     }
 }

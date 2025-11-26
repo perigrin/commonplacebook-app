@@ -9,22 +9,33 @@ import SwiftUI
 final class EnhancedNoteListBatchedLoadingTests: XCTestCase {
     var mockRepository: MockBatchedLoadRepository!
     var mockSearchEngine: MockBatchSearchEngine!
+    var mockEmbeddingService: TestEmbeddingService!
+    var mockNoteService: NoteService!
     var listViewModel: NoteListViewModel!
     var searchViewModel: SearchViewModel!
-    var mockMetadataCollector: MockMetadataCollector!
+    var metadataCollector: MetadataCollector!
 
     override func setUpWithError() throws {
         mockRepository = MockBatchedLoadRepository()
         mockSearchEngine = MockBatchSearchEngine()
-        mockMetadataCollector = MockMetadataCollector()
+        mockEmbeddingService = TestEmbeddingService()
+        metadataCollector = MetadataCollector()
+
+        mockNoteService = NoteService(
+            repository: mockRepository,
+            searchEngine: mockSearchEngine,
+            embeddingService: mockEmbeddingService
+        )
 
         listViewModel = NoteListViewModel(
+            noteService: mockNoteService,
             repository: mockRepository,
-            metadataCollector: mockMetadataCollector
+            metadataCollector: metadataCollector
         )
 
         searchViewModel = SearchViewModel(
             searchEngine: mockSearchEngine,
+            noteService: mockNoteService,
             repository: mockRepository
         )
     }
@@ -32,7 +43,9 @@ final class EnhancedNoteListBatchedLoadingTests: XCTestCase {
     override func tearDownWithError() throws {
         mockRepository = nil
         mockSearchEngine = nil
-        mockMetadataCollector = nil
+        mockEmbeddingService = nil
+        mockNoteService = nil
+        metadataCollector = nil
         listViewModel = nil
         searchViewModel = nil
     }
@@ -49,14 +62,12 @@ final class EnhancedNoteListBatchedLoadingTests: XCTestCase {
         let results = notes.map { SearchResult(noteId: $0.id, relevance: 0.9) }
 
         // WHEN loading notes
-        let view = SearchResultsListView(searchViewModel: searchViewModel)
-
-        // Simulate the loading behavior
         let loadedNotes = try await loadNotesViaBatchedMethod(for: results)
 
         // THEN all notes loaded in single batch
+        let maxReads = await mockRepository.maxConcurrentReads
         XCTAssertEqual(loadedNotes.count, 10, "Should load all 10 notes")
-        XCTAssertEqual(await mockRepository.maxConcurrentReads, 10, "Should have max 10 concurrent reads")
+        XCTAssertEqual(maxReads, 10, "Should have max 10 concurrent reads")
     }
 
     func testBatchedLoadingWithExactlyTwentyResults() async throws {
@@ -72,8 +83,9 @@ final class EnhancedNoteListBatchedLoadingTests: XCTestCase {
         let loadedNotes = try await loadNotesViaBatchedMethod(for: results)
 
         // THEN all notes loaded in single batch
+        let maxReads = await mockRepository.maxConcurrentReads
         XCTAssertEqual(loadedNotes.count, 20, "Should load all 20 notes")
-        XCTAssertEqual(await mockRepository.maxConcurrentReads, 20, "Should have max 20 concurrent reads")
+        XCTAssertEqual(maxReads, 20, "Should have max 20 concurrent reads")
     }
 
     func testBatchedLoadingWithLargeResultSet() async throws {
@@ -89,9 +101,10 @@ final class EnhancedNoteListBatchedLoadingTests: XCTestCase {
         let loadedNotes = try await loadNotesViaBatchedMethod(for: results)
 
         // THEN all notes loaded with max 20 concurrent reads
+        let maxReads = await mockRepository.maxConcurrentReads
         XCTAssertEqual(loadedNotes.count, 50, "Should load all 50 notes")
         XCTAssertLessThanOrEqual(
-            await mockRepository.maxConcurrentReads,
+            maxReads,
             20,
             "Should never exceed 20 concurrent reads"
         )
@@ -110,9 +123,10 @@ final class EnhancedNoteListBatchedLoadingTests: XCTestCase {
         let loadedNotes = try await loadNotesViaBatchedMethod(for: results)
 
         // THEN all notes loaded with max 20 concurrent reads
+        let maxReads = await mockRepository.maxConcurrentReads
         XCTAssertEqual(loadedNotes.count, 100, "Should load all 100 notes")
         XCTAssertLessThanOrEqual(
-            await mockRepository.maxConcurrentReads,
+            maxReads,
             20,
             "Should never exceed 20 concurrent reads even with 100 results"
         )
@@ -244,7 +258,7 @@ final class EnhancedNoteListBatchedLoadingTests: XCTestCase {
 
 // MARK: - Mock Repository with Concurrency Tracking
 
-actor MockBatchedLoadRepository: NoteRepositoryProtocol {
+actor MockBatchedLoadRepository: NoteRepository {
     private var notes: [UUID: Note] = [:]
     private var currentConcurrentReads = 0
     private(set) var maxConcurrentReads = 0
@@ -258,7 +272,7 @@ actor MockBatchedLoadRepository: NoteRepositoryProtocol {
         return note
     }
 
-    func read(id: UUID) async throws -> Note {
+    func read(id: UUID) async throws -> Note? {
         // Track concurrent reads
         currentConcurrentReads += 1
         if currentConcurrentReads > maxConcurrentReads {
@@ -270,11 +284,7 @@ actor MockBatchedLoadRepository: NoteRepositoryProtocol {
 
         currentConcurrentReads -= 1
 
-        guard let note = notes[id] else {
-            throw NSError(domain: "test", code: 404, userInfo: [NSLocalizedDescriptionKey: "Note not found"])
-        }
-
-        return note
+        return notes[id]
     }
 
     func update(note: Note) async throws -> Note {
@@ -283,11 +293,39 @@ actor MockBatchedLoadRepository: NoteRepositoryProtocol {
     }
 
     func delete(id: UUID) async throws {
-        notes.removeValue(forKey: id)
+        // Soft delete - set deletedAt timestamp
+        guard var note = notes[id] else {
+            return  // Idempotent
+        }
+        note.deletedAt = Date()
+        notes[id] = note
     }
 
     func list() async throws -> [Note] {
-        return Array(notes.values)
+        return Array(notes.values.filter { !$0.isDeleted })
+    }
+
+    func search(query: String) async throws -> [Note] {
+        let lowercased = query.lowercased()
+        return notes.values.filter { note in
+            !note.isDeleted && (note.title.lowercased().contains(lowercased) || note.content.lowercased().contains(lowercased))
+        }
+    }
+
+    func listTrashed() async throws -> [Note] {
+        return Array(notes.values.filter { $0.isDeleted })
+    }
+
+    func restore(id: UUID) async throws {
+        guard var note = notes[id] else {
+            throw RepositoryError.noteNotFound(id)
+        }
+        note.deletedAt = nil
+        notes[id] = note
+    }
+
+    func purge(id: UUID) async throws {
+        notes.removeValue(forKey: id)
     }
 }
 

@@ -13,11 +13,11 @@ class SearchViewModel: ObservableObject {
     @Published var query: String = ""
     @Published private(set) var results: [SearchResult] = []
     @Published private(set) var isSearching: Bool = false
-    @Published var threshold: Float = 0.7
+    @Published var threshold: Float = 0.15 // Semantic search threshold (NLEmbedding typically produces 0.1-0.3 for related content)
 
     // MARK: - Private Properties
 
-    private let searchEngine: VectorSearchEngineProtocol
+    private let searchEngine: any VectorSearchEngineProtocol
     let noteService: NoteService // Internal access for SearchResultsListView
     let repository: NoteRepository // Internal access for reading notes
     private var cancellables = Set<AnyCancellable>()
@@ -27,7 +27,7 @@ class SearchViewModel: ObservableObject {
 
     // MARK: - Initialization
 
-    init(searchEngine: VectorSearchEngineProtocol, noteService: NoteService, repository: NoteRepository) {
+    init(searchEngine: any VectorSearchEngineProtocol, noteService: NoteService, repository: NoteRepository) {
         self.searchEngine = searchEngine
         self.noteService = noteService
         self.repository = repository
@@ -99,8 +99,11 @@ class SearchViewModel: ObservableObject {
     // MARK: - Private Methods
 
     private func handleQueryChange(_ newQuery: String) async {
+        print("🔍 SearchViewModel.handleQueryChange called with query: '\(newQuery)'")
+
         // Clear results if query is empty
         guard !newQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            print("🔍 Query is empty, clearing results")
             isSearching = false
             results = []
             return
@@ -109,31 +112,39 @@ class SearchViewModel: ObservableObject {
         // Increment generation to track this search
         searchGeneration += 1
         let currentGeneration = searchGeneration
+        print("🔍 Starting search generation \(currentGeneration)")
 
         // Execute search
         isSearching = true
 
         do {
+            print("🔍 Calling searchEngine.search with query: '\(newQuery)', threshold: \(threshold)")
             let searchResults = try await searchEngine.search(query: newQuery, threshold: threshold)
+            print("🔍 Search returned \(searchResults.count) results")
 
             // Check if cancelled or superseded by newer search
             guard !Task.isCancelled && currentGeneration == searchGeneration else {
+                print("🔍 Search cancelled or superseded (current: \(currentGeneration), latest: \(searchGeneration))")
                 return
             }
 
             // Results are already sorted by relevance from search engine
+            print("🔍 Setting results to \(searchResults.count) items")
             results = searchResults
+            print("🔍 Results published: \(results.count) items")
 
         } catch {
             // Check if cancelled before updating state
             guard !Task.isCancelled && currentGeneration == searchGeneration else {
+                print("🔍 Search error handling cancelled (current: \(currentGeneration), latest: \(searchGeneration))")
                 return
             }
 
-            print("Search error: \(error)")
+            print("❌ Search error: \(error)")
             results = []
         }
 
         isSearching = false
+        print("🔍 Search complete, isSearching = false")
     }
 }

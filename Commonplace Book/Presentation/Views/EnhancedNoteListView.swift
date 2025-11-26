@@ -40,6 +40,8 @@ struct EnhancedNoteListView: View {
     }
 
     var body: some View {
+        let _ = print("🎯 EnhancedNoteListView - isSearchMode: \(isSearchMode), query: '\(searchViewModel.query)'")
+        
         NavigationSplitView {
             // Sidebar: Note list with search at bottom
             ZStack {
@@ -333,7 +335,9 @@ struct EnhancedNoteListView: View {
     // MARK: - Search Mode Content
 
     private var searchModeContent: some View {
-        Group {
+        let _ = print("🔍 Search mode - isSearching: \(searchViewModel.isSearching), results count: \(searchViewModel.results.count)")
+        
+        return Group {
             if searchViewModel.isSearching {
                 searchLoadingView
             } else if searchViewModel.results.isEmpty {
@@ -456,7 +460,9 @@ struct SearchResultsListView: View {
         .scrollDismissesKeyboard(.immediately)
         .scrollContentBackground(.hidden)
         .background(Theme.Colors.noteListBackground)
-        .onChange(of: searchViewModel.results) { _, newResults in
+        .task(id: searchViewModel.results) {
+            print("🔔 task(id:) triggered! Results count: \(searchViewModel.results.count)")
+
             // Cancel previous load task
             loadTask?.cancel()
 
@@ -464,20 +470,26 @@ struct SearchResultsListView: View {
             loadGeneration += 1
             let currentGeneration = loadGeneration
 
+            let results = searchViewModel.results
+
             // Pre-compute relevance map for O(1) lookups
-            relevanceMap = Dictionary(uniqueKeysWithValues: newResults.map { ($0.noteId, $0.relevance) })
+            relevanceMap = Dictionary(uniqueKeysWithValues: results.map { ($0.noteId, $0.relevance) })
 
             // Start new load task
             loadTask = Task { @MainActor in
                 do {
-                    let notes = try await loadNotesPreservingOrder(for: newResults)
+                    print("📥 Loading \(results.count) notes for search results...")
+                    let notes = try await loadNotesPreservingOrder(for: results)
+                    print("📥 Loaded \(notes.count) notes successfully")
                     // Only update if this is still the latest load (not superseded by newer search)
                     if !Task.isCancelled && currentGeneration == loadGeneration {
                         loadedNotes = notes
+                        print("📥 Updated loadedNotes with \(notes.count) notes")
                     }
                 } catch {
                     // Log error and clear results
                     if !Task.isCancelled {
+                        print("❌ Failed to load search results: \(error.localizedDescription)")
                         Logger.error("Failed to load search results: \(error.localizedDescription)", category: .database)
                     }
                     if !Task.isCancelled && currentGeneration == loadGeneration {
